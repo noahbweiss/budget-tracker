@@ -14,7 +14,10 @@ from app.templating import templates
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
-VALID_RANGES = {"daily", "weekly", "monthly", "quarterly", "yearly"}
+# Ordered by granularity (finest to coarsest) — this is display order for
+# the range switcher, not just a membership set, so keep it a list/tuple
+# rather than a set (which would silently lose the order, as it did before).
+VALID_RANGES = ("daily", "weekly", "monthly", "quarterly", "yearly")
 
 
 @router.get("/{range_type}")
@@ -22,7 +25,7 @@ def get_dashboard(request: Request, range_type: str, db: Session = Depends(get_d
     if range_type not in VALID_RANGES:
         raise HTTPException(
             status_code=400,
-            detail={"error": f"unknown range_type '{range_type}'", "valid": sorted(VALID_RANGES)},
+            detail={"error": f"unknown range_type '{range_type}'", "valid": list(VALID_RANGES)},
         )
 
     data = aggregation.bucket_transactions(db, range_type)
@@ -35,7 +38,7 @@ def get_dashboard(request: Request, range_type: str, db: Session = Depends(get_d
     ]
     context = {
         "range_type": range_type,
-        "valid_ranges": sorted(VALID_RANGES),
+        "valid_ranges": list(VALID_RANGES),
         "active_nav": "dashboard",
         **data,
         "buckets": chart_buckets,
