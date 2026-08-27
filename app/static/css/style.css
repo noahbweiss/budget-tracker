@@ -116,6 +116,12 @@ p {
   color: var(--expense);
 }
 
+.figure--big {
+  font-size: 1.6rem;
+  font-weight: 600;
+  margin: 0;
+}
+
 /* ---- Header ---- */
 
 .site-header {
@@ -227,6 +233,101 @@ p {
   padding: 0.2rem 0.65rem;
   font-size: 0.78rem;
   color: var(--ink-muted);
+}
+
+/* ---- Dashboard ---- */
+
+.dashboard-summary {
+  margin-bottom: 1rem;
+}
+
+.dashboard-summary h2 {
+  color: var(--ink-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.range-switcher {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 1.25rem;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 0.75rem;
+}
+
+.range-switcher__btn {
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink-muted);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 0.35rem 0.85rem;
+  cursor: pointer;
+}
+
+.range-switcher__btn:hover {
+  color: var(--ink);
+  border-color: var(--ink-muted);
+}
+
+.range-switcher__btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+#dashboard-chart {
+  max-height: 320px;
+}
+
+.category-breakdown {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.category-breakdown li {
+  display: grid;
+  grid-template-columns: 9rem 1fr auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.category-breakdown li:first-child {
+  border-top: none;
+}
+
+.category-breakdown__name {
+  font-size: 0.88rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.category-breakdown__bar-track {
+  background: var(--line);
+  border-radius: 999px;
+  height: 6px;
+  overflow: hidden;
+}
+
+.category-breakdown__bar {
+  display: block;
+  height: 100%;
+}
+
+.category-breakdown__bar--income {
+  background: var(--income);
+}
+
+.category-breakdown__bar--expense {
+  background: var(--expense);
 }
 
 /* ---- Empty state ---- */

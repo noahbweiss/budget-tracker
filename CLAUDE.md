@@ -6,7 +6,7 @@ Reference doc for working on this repo. Read this before making changes; update 
 
 A local-first, open-source personal finance tracker (FastAPI + SQLite). Users track budget/spending/income across daily/weekly/monthly/quarterly/yearly views, with tiered bank connectivity: CSV/OFX import as the zero-config default, optional live sync via SimpleFin (user-supplied token, no bank credentials ever touch this app or a server we run). Goal is an open-source project anyone can one-click-run (Docker) and fork/extend, eventually packaged as a native desktop app via Tauri (`src-tauri/`, wraps the same FastAPI backend as a subprocess — no duplicated logic).
 
-**Status:** backend skeleton is real and working; frontend scaffolding is in place (base layout, static/template mounting, vendored htmx + Chart.js, a real rendered home page) but no data-driven pages exist yet — that starts with the dashboard in Phase 2. See `PLAN.md` for the roadmap.
+**Status:** backend skeleton is real and working; frontend scaffolding is in place, and the dashboard (Phase 2) is fully wired end-to-end — real aggregation, real charts, real category breakdown. Accounts/transactions/import/SimpleFin are still stubs. See `PLAN.md` for the roadmap.
 
 ## Architecture
 
@@ -28,6 +28,8 @@ app/
 - **Services** are the "logic stub" layer: functions/classes with real signatures that `raise NotImplementedError("...")` until implemented. This is where actual business logic (aggregation math, CSV parsing, SimpleFin API calls) lives, kept out of route handlers.
 
 When implementing a stub, replace both halves together: make the service function actually work, then have the router call it instead of returning the placeholder.
+
+**HTML-rendering pattern (established in `routers/dashboard.py`, Phase 2):** a router that renders UI imports `templates` from `app.templating` (not from `app.main` — that would be a circular import, since `main.py` imports the routers). It checks `request.headers.get("hx-request") == "true"` to decide whether to return a full page (extends `base.html`) or just the inner fragment for an HTMX swap target. Keep `<script>` tags out of swapped fragments — HTMX doesn't execute scripts injected via a swap — so any JS that needs to react to new content (e.g. rebuilding a Chart.js chart) belongs in a page-level script listening for `htmx:afterSwap`, not inside the fragment template itself.
 
 ## Data model (`app/models.py`)
 

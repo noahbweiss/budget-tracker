@@ -22,3 +22,4 @@ venv/
 
 # Claude Code local (project-shared settings.json stays tracked)
 .claude/settings.local.json
+.claude/scheduled_tasks.lock

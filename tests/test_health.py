@@ -27,10 +27,22 @@ def test_static_files_served():
 def test_dashboard_valid_range():
     response = client.get("/dashboard/monthly")
     assert response.status_code == 200
-    assert response.json()["range_type"] == "monthly"
+    assert response.headers["content-type"].startswith("text/html")
+    assert "<!doctype html>" in response.text.lower()
+    assert "range-switcher" in response.text
 
 
 def test_dashboard_invalid_range():
     response = client.get("/dashboard/decade")
     assert response.status_code == 400
     assert "error" in response.json()["detail"]
+
+
+def test_dashboard_htmx_request_returns_fragment_only():
+    """An HTMX-triggered range switch should get just the swappable
+    fragment, not a full page — see dashboard.py's HX-Request check.
+    """
+    response = client.get("/dashboard/weekly", headers={"HX-Request": "true"})
+    assert response.status_code == 200
+    assert "<!doctype html>" not in response.text.lower()
+    assert "range-switcher" in response.text

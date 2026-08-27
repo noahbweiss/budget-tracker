@@ -8,21 +8,20 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 
 from app.database import Base, engine
 from app.routers import accounts, dashboard, import_csv, simplefin, transactions
+from app.templating import templates
 
 # TODO: replace with Alembic migrations once the schema stabilizes.
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Finance Tracker")
 
-# Anchored to this file's location (not cwd) so static/template resolution
-# doesn't depend on where the process was launched from.
+# Anchored to this file's location (not cwd) so static resolution doesn't
+# depend on where the process was launched from.
 APP_DIR = Path(__file__).resolve().parent
 app.mount("/static", StaticFiles(directory=APP_DIR / "static"), name="static")
-templates = Jinja2Templates(directory=APP_DIR / "templates")
 
 app.include_router(dashboard.router)
 app.include_router(accounts.router)

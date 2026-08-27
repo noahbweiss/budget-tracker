@@ -20,12 +20,14 @@ Small, mechanical, unblocks everything else (including the README's documented "
 
 Not done yet, deliberately deferred to later phases: dashboard template with real data/charts (Phase 2), manual dark-mode toggle (nice-to-have, not blocking).
 
-## Phase 2 — Dashboard, end-to-end
+## Phase 2 — Dashboard, end-to-end ✅ (2026-08-27)
 
-- [ ] Implement `app/services/aggregation.py`: `bucket_transactions(db, range_type, start=None, end=None)`. Resolve the quarterly-bucket TODO (`RANGE_TO_BUCKET["quarterly"]` currently `None` — SQLite has no native quarter format, derive it from month).
-- [ ] Wire `app/routers/dashboard.py` to call `aggregation.bucket_transactions` instead of returning the stub.
-- [ ] Dashboard template: range switcher (daily/weekly/monthly/quarterly/yearly) via HTMX, Chart.js spend/income chart, category-breakdown cards.
-- [ ] Add tests covering real aggregation output (extends `tests/test_health.py`'s existing dashboard tests, which currently only assert stub shape).
+- [x] Implement `app/services/aggregation.py`: `bucket_transactions(db, range_type, start=None, end=None)`. Bucketing happens in Python (not SQL strftime) — simpler to test, and resolves the quarterly TODO by deriving the quarter from the month directly rather than fighting SQLite's lack of a native quarter format. Covered by `tests/test_aggregation.py` (9 tests, TDD'd against an in-memory SQLite fixture in `tests/conftest.py`).
+- [x] Wire `app/routers/dashboard.py` to call `aggregation.bucket_transactions`. The route now renders HTML only (no JSON mode) — a full page on a normal request, or just the `dashboard/_content.html` fragment when `HX-Request` is set, per the HTMX convention.
+- [x] Dashboard templates (`app/templates/dashboard/index.html` + `_content.html`): range switcher (daily/weekly/monthly/quarterly/yearly) via `hx-get`/`hx-target`/`hx-swap`, Chart.js bar chart of income/spending per bucket, category-breakdown list with proportional bars. Chart colors are read from the CSS custom properties at render time (`app/static/js/dashboard.js`), so they follow the light/dark palette automatically; the chart is rebuilt on `htmx:afterSwap` since HTMX doesn't execute `<script>` tags from a swapped fragment.
+- [x] Tests extended: `tests/test_health.py`'s dashboard tests now assert HTML (not the old JSON stub shape), plus a new test confirming the HTMX path returns a bare fragment (no `<!doctype html>`).
+
+Caught during end-to-end verification (not by the unit tests, which never touched the template layer): `Decimal` isn't JSON-serializable, so the `|tojson` filter on the chart's `data-buckets` attribute 500'd against real data. Fixed by converting just the chart-bound bucket values to `float` at the router/template boundary — `aggregation.py` itself still returns `Decimal` throughout for precision. Worth remembering: **aggregation unit tests alone don't cover template rendering — always smoke-test a route against seeded data, not just an empty DB.**
 
 ## Phase 3 — Accounts & transactions pages
 

@@ -1,0 +1,64 @@
+{# Dashboard inner content — rendered inside #dashboard-content in
+   dashboard/index.html on a normal page load, and returned standalone
+   (this file only, no layout) for HTMX range-switch swaps. Keep this
+   fragment free of <script> tags: HTMX doesn't execute scripts injected
+   via a swap, so chart re-render logic lives in js/dashboard.js instead,
+   listening for htmx:afterSwap. #}
+
+<div class="range-switcher" role="tablist" aria-label="Select time range">
+  {% for r in valid_ranges %}
+  <button
+    type="button"
+    class="range-switcher__btn{% if r == range_type %} active{% endif %}"
+    hx-get="/dashboard/{{ r }}"
+    hx-target="#dashboard-content"
+    hx-swap="innerHTML"
+    hx-push-url="/dashboard/{{ r }}"
+    {% if r == range_type %}aria-current="true"{% endif %}
+  >{{ r | capitalize }}</button>
+  {% endfor %}
+</div>
+
+<div class="card-grid dashboard-summary">
+  <div class="card">
+    <h2>Income</h2>
+    <p class="figure figure--income figure--big">${{ "%.2f"|format(totals.income) }}</p>
+  </div>
+  <div class="card">
+    <h2>Spending</h2>
+    <p class="figure figure--expense figure--big">${{ "%.2f"|format(totals.spending) }}</p>
+  </div>
+  <div class="card">
+    <h2>Net</h2>
+    <p class="figure figure--big {% if totals.net >= 0 %}figure--income{% else %}figure--expense{% endif %}">${{ "%.2f"|format(totals.net) }}</p>
+  </div>
+</div>
+
+{% if buckets %}
+<div class="card">
+  <h2>Over time</h2>
+  <canvas id="dashboard-chart" data-buckets='{{ buckets | tojson }}'></canvas>
+</div>
+{% endif %}
+
+{% if by_category %}
+<div class="card">
+  <h2>By category</h2>
+  <ul class="category-breakdown">
+    {% for c in by_category %}
+    <li>
+      <span class="category-breakdown__name">{{ c.category }}</span>
+      <span class="category-breakdown__bar-track">
+        <span class="category-breakdown__bar category-breakdown__bar--{{ c.kind }}" style="width: {{ (c.share * 100) | round(1) }}%"></span>
+      </span>
+      <span class="figure figure--{{ c.kind }}">${{ "%.2f"|format(c.total) }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% else %}
+<div class="empty-state">
+  <h1>No transactions in this range</h1>
+  <p>Once you import a CSV or connect a bank, spending and income will show up here.</p>
+</div>
+{% endif %}
