@@ -6,10 +6,10 @@ This is a working roadmap, not a locked spec — phases and details can shift as
 
 Small, mechanical, unblocks everything else (including the README's documented "just clone and run" paths actually working).
 
-- [ ] `git init`, initial commit.
-- [ ] `.gitignore` — at minimum: `data/*.db`, `venv/`, `__pycache__/`, `.env`, `*.pyc`.
-- [ ] `.env.example` documenting `DATABASE_URL` and `SIMPLEFIN_ACCESS_URL` (both optional — defaults already exist in `config.py`), so `docker compose up` works out of the box per the README.
-- [ ] Fix `app/routers/dashboard.py`: return HTTP 400 (not 200) for an unknown `range_type`.
+- [x] `git init`, initial commit.
+- [x] `.gitignore` — at minimum: `data/*.db`, `venv/`, `__pycache__/`, `.env`, `*.pyc`.
+- [x] `.env.example` documenting `DATABASE_URL` and `SIMPLEFIN_ACCESS_URL` (both optional — defaults already exist in `config.py`), so `docker compose up` works out of the box per the README. (README's Docker instructions also updated to `cp .env.example .env` first, since `docker-compose.yml`'s `env_file` directive errors if `.env` is missing outright.)
+- [x] Fix `app/routers/dashboard.py`: return HTTP 400 (not 200) for an unknown `range_type`, via `HTTPException`. Test updated in `tests/test_health.py`.
 
 ## Phase 1 — Frontend scaffolding
 

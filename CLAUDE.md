@@ -58,15 +58,12 @@ Rationale: keeps "clone and run" trivial for forkers (no `npm install`/build pip
 - Color used sparingly and meaningfully: green/red reserved for income/expense signal (matching the model's signed-amount convention), not used decoratively elsewhere.
 - HTMX handles the interactive bits (range switching, live-updating fragments) — server returns rendered HTML fragments, not JSON, to HTMX-triggered requests. (`dashboard.py`'s own TODO already anticipates this: "return an HTMX-rendered template fragment instead of raw JSON.")
 
-## Known gaps (as of 2026-08-26 audit)
+## Known gaps
 
-- No `.git` repo initialized yet, despite this being intended as an open-source project.
-- No `.gitignore` — `data/` (SQLite file) needs excluding once git is initialized.
-- No `.env.example` — `config.py` and `docker-compose.yml` both reference `.env`, but no file or template for it exists. `docker compose up`, the README's recommended path, currently fails because of this.
-- `dashboard.py` returns HTTP 200 with an `{"error": ...}` body for an invalid `range_type` instead of a 4xx.
-- No `AccountCreate`/`TransactionUpdate`-style Pydantic request schemas yet (only `simplefin.py`'s `ConnectRequest` exists) — `POST /accounts/` doesn't accept a body yet.
+Resolved in Phase 0 (2026-08-27): git repo initialized, `.gitignore` added, `.env`/`.env.example` added (README's Docker instructions now include `cp .env.example .env`), `dashboard.py` returns a proper 400 via `HTTPException` for an invalid `range_type`.
 
-All of the above are tracked as Phase 0 in `PLAN.md`.
+Still open:
+- No `AccountCreate`/`TransactionUpdate`-style Pydantic request schemas yet (only `simplefin.py`'s `ConnectRequest` exists) — `POST /accounts/` doesn't accept a body yet. Tracked as Phase 3 in `PLAN.md`.
 
 ## Working agreement
 
