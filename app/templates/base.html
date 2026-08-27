@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}Finance Tracker{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='css/style.css') }}" />
+    <script src="{{ url_for('static', path='vendor/htmx.min.js') }}" defer></script>
+    {% block head %}{% endblock %}
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header__inner">
+        <a class="wordmark" href="/">Finance Tracker</a>
+        <nav class="nav">
+          <a href="/dashboard/monthly" class="{% if active_nav == 'dashboard' %}active{% endif %}">Dashboard</a>
+          <a href="/accounts/" class="{% if active_nav == 'accounts' %}active{% endif %}">Accounts</a>
+          <a href="/transactions/" class="{% if active_nav == 'transactions' %}active{% endif %}">Transactions</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      {% block content %}{% endblock %}
+    </main>
+
+    <footer class="site-footer">
+      <p>
+        Local-first — your data stays in <code>data/finance.db</code> on this machine.
+        <a href="https://github.com/noahbweiss/budget-tracker" target="_blank" rel="noopener">Source on GitHub</a>
+      </p>
+    </footer>
+  </body>
+</html>

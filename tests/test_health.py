@@ -14,7 +14,14 @@ def test_health():
 def test_root():
     response = client.get("/")
     assert response.status_code == 200
-    assert response.json()["app"] == "finance-tracker"
+    assert response.headers["content-type"].startswith("text/html")
+    assert "Finance Tracker" in response.text
+
+
+def test_static_files_served():
+    response = client.get("/static/css/style.css")
+    assert response.status_code == 200
+    assert "text/css" in response.headers["content-type"]
 
 
 def test_dashboard_valid_range():

@@ -6,7 +6,7 @@ Reference doc for working on this repo. Read this before making changes; update 
 
 A local-first, open-source personal finance tracker (FastAPI + SQLite). Users track budget/spending/income across daily/weekly/monthly/quarterly/yearly views, with tiered bank connectivity: CSV/OFX import as the zero-config default, optional live sync via SimpleFin (user-supplied token, no bank credentials ever touch this app or a server we run). Goal is an open-source project anyone can one-click-run (Docker) and fork/extend, eventually packaged as a native desktop app via Tauri (`src-tauri/`, wraps the same FastAPI backend as a subprocess — no duplicated logic).
 
-**Status:** backend skeleton is real and working; frontend is unbuilt. See `PLAN.md` for the roadmap.
+**Status:** backend skeleton is real and working; frontend scaffolding is in place (base layout, static/template mounting, vendored htmx + Chart.js, a real rendered home page) but no data-driven pages exist yet — that starts with the dashboard in Phase 2. See `PLAN.md` for the roadmap.
 
 ## Architecture
 
@@ -19,8 +19,8 @@ app/
   models.py        Account, Category, Transaction (SQLAlchemy 2.0 typed style)
   routers/         HTTP layer — one file per feature area
   services/        Business logic, called from routers
-  templates/        Jinja2 (empty — Phase 1)
-  static/          CSS/JS/Chart.js (empty — Phase 1)
+  templates/        Jinja2 — base.html (layout/nav) + page templates
+  static/          css/style.css (design tokens + base styles), vendor/ (htmx, Chart.js)
 ```
 
 **Router/service split — preserve this convention:**

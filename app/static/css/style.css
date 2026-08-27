@@ -1,0 +1,283 @@
+/* Finance Tracker — base styles.
+ *
+ * Design direction (see CLAUDE.md "Frontend direction"): a restrained,
+ * ledger-inspired system, not a marketing-site look. Two structural ideas
+ * carry the whole app:
+ *   1. A "paper" background with hairline rules instead of heavy borders —
+ *      a nod to ledger pages, used functionally (dividers, table rows),
+ *      never decoratively.
+ *   2. Every monetary figure renders in a tabular-numeral monospace face
+ *      (.figure), so columns of amounts align the way they do on a real
+ *      statement. Everything else uses the system UI sans.
+ * No webfonts — system font stacks only, so the app never needs a network
+ * request to render correctly (matches the offline/local-first principle
+ * that also governs vendoring htmx/Chart.js instead of using a CDN).
+ */
+
+:root {
+  --bg: #f5f4f1;
+  --bg-elevated: #ffffff;
+  --ink: #1c1b19;
+  --ink-muted: #6b6862;
+  --line: #dedcd6;
+  --accent: #2b3a55;
+  --accent-ink: #ffffff;
+  --income: #1f7a4d;
+  --expense: #b0362b;
+  --shadow: 0 1px 2px rgba(28, 27, 25, 0.06), 0 1px 1px rgba(28, 27, 25, 0.04);
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue",
+    Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Menlo,
+    Consolas, monospace;
+
+  --radius: 6px;
+  --content-width: 1080px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16171a;
+    --bg-elevated: #1e2024;
+    --ink: #eceae6;
+    --ink-muted: #9c9a94;
+    --line: #2c2e33;
+    --accent: #7c93be;
+    --accent-ink: #16171a;
+    --income: #4caf7d;
+    --expense: #e2695c;
+    --shadow: none;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: light dark;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--accent);
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+h1,
+h2,
+h3 {
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  margin: 0 0 0.4em;
+}
+
+h1 {
+  font-size: 1.6rem;
+}
+
+h2 {
+  font-size: 1.15rem;
+}
+
+p {
+  margin: 0 0 1em;
+  color: var(--ink);
+}
+
+/* Tabular figures — use for every dollar amount in the app. */
+.figure {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+.figure--income {
+  color: var(--income);
+}
+
+.figure--expense {
+  color: var(--expense);
+}
+
+/* ---- Header ---- */
+
+.site-header {
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-elevated);
+}
+
+.site-header__inner {
+  max-width: var(--content-width);
+  margin: 0 auto;
+  padding: 0.9rem 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.wordmark {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  font-size: 1.05rem;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.wordmark::before {
+  content: "＄";
+  display: inline-block;
+  color: var(--accent);
+  margin-right: 0.4em;
+}
+
+.nav {
+  display: flex;
+  gap: 1.25rem;
+}
+
+.nav a {
+  color: var(--ink-muted);
+  text-decoration: none;
+  font-size: 0.92rem;
+  font-weight: 500;
+  padding: 0.25rem 0;
+  border-bottom: 2px solid transparent;
+}
+
+.nav a:hover {
+  color: var(--ink);
+}
+
+.nav a.active {
+  color: var(--ink);
+  border-bottom-color: var(--accent);
+}
+
+/* ---- Layout ---- */
+
+.page {
+  max-width: var(--content-width);
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem 4rem;
+}
+
+/* ---- Cards ---- */
+
+.card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 1.5rem;
+}
+
+.card + .card {
+  margin-top: 1rem;
+}
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+/* ---- Buttons / pills ---- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: none;
+  border-radius: var(--radius);
+  padding: 0.55rem 1rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.btn:hover {
+  opacity: 0.92;
+}
+
+.pill {
+  display: inline-block;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.2rem 0.65rem;
+  font-size: 0.78rem;
+  color: var(--ink-muted);
+}
+
+/* ---- Empty state ---- */
+
+.empty-state {
+  padding: 2.5rem 0 1rem;
+  border-top: 1px solid var(--line);
+  margin-top: 1.5rem;
+}
+
+.empty-state h1 {
+  font-size: 1.3rem;
+}
+
+.empty-state p {
+  color: var(--ink-muted);
+  max-width: 46ch;
+}
+
+.action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 1.25rem;
+}
+
+/* ---- Footer ---- */
+
+.site-footer {
+  border-top: 1px solid var(--line);
+  padding: 1.25rem 1.5rem;
+}
+
+.site-footer p {
+  max-width: var(--content-width);
+  margin: 0 auto;
+  color: var(--ink-muted);
+  font-size: 0.82rem;
+}
+
+.site-footer code {
+  font-family: var(--font-mono);
+}
+
+.site-footer a {
+  color: var(--ink-muted);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  a,
+  .btn {
+    transition: opacity 0.12s ease, color 0.12s ease;
+  }
+}

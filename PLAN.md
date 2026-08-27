@@ -11,12 +11,14 @@ Small, mechanical, unblocks everything else (including the README's documented "
 - [x] `.env.example` documenting `DATABASE_URL` and `SIMPLEFIN_ACCESS_URL` (both optional — defaults already exist in `config.py`), so `docker compose up` works out of the box per the README. (README's Docker instructions also updated to `cp .env.example .env` first, since `docker-compose.yml`'s `env_file` directive errors if `.env` is missing outright.)
 - [x] Fix `app/routers/dashboard.py`: return HTTP 400 (not 200) for an unknown `range_type`, via `HTTPException`. Test updated in `tests/test_health.py`.
 
-## Phase 1 — Frontend scaffolding
+## Phase 1 — Frontend scaffolding ✅ (2026-08-27)
 
-- [ ] Mount `Jinja2Templates` and `StaticFiles` in `app/main.py`.
-- [ ] Base layout template: nav shell, light/dark CSS variables (`prefers-color-scheme` default).
-- [ ] Vendor HTMX and Chart.js into `app/static/` (no CDN — keep it fully local/offline).
-- [ ] Replace the root `/` stub with a real rendered page (redirect to or embed the dashboard).
+- [x] Mount `Jinja2Templates` and `StaticFiles` in `app/main.py` (paths anchored to `Path(__file__).parent`, not cwd).
+- [x] Base layout template (`app/templates/base.html`): nav shell (Dashboard/Accounts/Transactions), light/dark CSS variables in `app/static/css/style.css` (`prefers-color-scheme` default, no manual toggle yet). Design direction: ledger-inspired — paper background + hairline rules, tabular-numeral monospace (`.figure`) reserved for money amounts, restrained slate-navy accent (not decorative green/red, which stay reserved for income/expense per the existing convention). No webfonts — system font stacks only, consistent with the offline-first principle.
+- [x] Vendor HTMX 2.0.10 and Chart.js 4.5.1 into `app/static/vendor/` (see `VENDORED.md` there for versions/upgrade path).
+- [x] Replace the root `/` stub with a real rendered page (`index.html`) — currently an honest empty-state home page (no accounts/transactions exist yet), with working links to the existing JSON endpoints and "coming soon" markers for CSV import / SimpleFin connect, which don't have GET pages yet.
+
+Not done yet, deliberately deferred to later phases: dashboard template with real data/charts (Phase 2), manual dark-mode toggle (nice-to-have, not blocking).
 
 ## Phase 2 — Dashboard, end-to-end
 

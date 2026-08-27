@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block title %}Finance Tracker{% endblock %}
+
+{% block content %}
+<div class="card-grid">
+  <a class="card" href="/dashboard/monthly" style="text-decoration:none;">
+    <h2>Dashboard</h2>
+    <p>Spend and income by range. Returns JSON for now — a rendered chart view lands in Phase 2.</p>
+  </a>
+  <a class="card" href="/accounts/" style="text-decoration:none;">
+    <h2>Accounts</h2>
+    <p>Your connected and manually-added accounts. Returns JSON for now — Phase 3 adds a real page.</p>
+  </a>
+  <a class="card" href="/transactions/" style="text-decoration:none;">
+    <h2>Transactions</h2>
+    <p>Every transaction across your accounts. Returns JSON for now — Phase 3 adds a real page.</p>
+  </a>
+</div>
+
+<div class="empty-state">
+  <h1>No transactions yet</h1>
+  <p>
+    This is a fresh install — nothing has been imported or connected yet.
+    Add a CSV export from your bank, or connect one with SimpleFin, and
+    your ledger will show up here.
+  </p>
+  <div class="action-row">
+    <span class="pill">Import a CSV — coming in Phase 4</span>
+    <span class="pill">Connect a bank — coming in Phase 5</span>
+    <a class="btn" href="/docs">Browse the API</a>
+  </div>
+</div>
+{% endblock %}

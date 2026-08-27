@@ -4,7 +4,11 @@ Both run modes (venv's run.py and Docker's uvicorn CMD) point at
 `app.main:app`, so there is exactly one app object regardless of how
 it's launched.
 """
-from fastapi import FastAPI
+from pathlib import Path
+
+from fastapi import FastAPI, Request
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
 from app.database import Base, engine
 from app.routers import accounts, dashboard, import_csv, simplefin, transactions
@@ -14,6 +18,12 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Finance Tracker")
 
+# Anchored to this file's location (not cwd) so static/template resolution
+# doesn't depend on where the process was launched from.
+APP_DIR = Path(__file__).resolve().parent
+app.mount("/static", StaticFiles(directory=APP_DIR / "static"), name="static")
+templates = Jinja2Templates(directory=APP_DIR / "templates")
+
 app.include_router(dashboard.router)
 app.include_router(accounts.router)
 app.include_router(transactions.router)
@@ -22,11 +32,11 @@ app.include_router(simplefin.router)
 
 
 @app.get("/")
-def root():
-    """Placeholder root route. TODO: replace with the rendered dashboard
-    template once frontend work starts.
+def root(request: Request):
+    """Rendered home page. Currently a static empty-state shell — becomes
+    a real dashboard/summary once accounts and transactions exist.
     """
-    return {"status": "ok", "app": "finance-tracker", "note": "skeleton stage — no UI yet"}
+    return templates.TemplateResponse(request, "index.html", {})
 
 
 @app.get("/health")
