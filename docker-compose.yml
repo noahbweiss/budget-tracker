@@ -1,0 +1,11 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      # Keeps the SQLite database on the host, so it survives rebuilds
+      # and `docker compose down`.
+      - ./data:/app/data
+    env_file:
+      - .env
