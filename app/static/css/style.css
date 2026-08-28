@@ -245,6 +245,22 @@ a.card:hover {
   opacity: 0.92;
 }
 
+.btn-secondary {
+  background: transparent;
+  color: var(--ink-muted);
+  border: 1px solid var(--line);
+}
+
+.btn-secondary:hover {
+  color: var(--ink);
+  opacity: 1;
+  border-color: var(--ink-muted);
+}
+
+.import-actions {
+  margin-top: 1rem;
+}
+
 .pill {
   display: inline-block;
   border: 1px solid var(--line);

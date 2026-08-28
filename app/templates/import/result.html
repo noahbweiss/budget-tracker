@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block title %}Import complete — Finance Tracker{% endblock %}
+
+{% block content %}
+<h1>Import complete</h1>
+<div class="card">
+  <p>
+    Imported {{ imported }} transaction{{ "" if imported == 1 else "s" }} into <strong>{{ account.name }}</strong>,
+    skipped {{ skipped }} duplicate{{ "" if skipped == 1 else "s" }} already in your ledger.
+  </p>
+  <div class="action-row">
+    <a class="btn" href="/transactions/">View transactions</a>
+    <a class="btn btn-secondary" href="/import/">Import another file</a>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+
+{% block title %}Import preview — Finance Tracker{% endblock %}
+
+{% block content %}
+<h1>Import preview</h1>
+<p class="account-card__meta">Importing into <strong>{{ account.name }}</strong></p>
+<div id="import-preview">
+  {% include "import/_preview_body.html" %}
+</div>
+{% endblock %}

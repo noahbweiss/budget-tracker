@@ -6,7 +6,7 @@ Reference doc for working on this repo. Read this before making changes; update 
 
 A local-first, open-source personal finance tracker (FastAPI + SQLite). Users track budget/spending/income across daily/weekly/monthly/quarterly/yearly views, with tiered bank connectivity: CSV/OFX import as the zero-config default, optional live sync via SimpleFin (user-supplied token, no bank credentials ever touch this app or a server we run). Goal is an open-source project anyone can one-click-run (Docker) and fork/extend, eventually packaged as a native desktop app via Tauri (`src-tauri/`, wraps the same FastAPI backend as a subprocess — no duplicated logic).
 
-**Status:** backend skeleton is real and working. Dashboard (Phase 2) and Accounts/Transactions (Phase 3) are fully wired end-to-end. CSV/OFX import and SimpleFin sync are still stubs — those are the only ways transactions can enter the system besides seeding directly, so a fresh install has no data until Phase 4/5 land. See `PLAN.md` for the roadmap.
+**Status:** backend skeleton is real and working. Dashboard (Phase 2), Accounts/Transactions (Phase 3), and CSV/OFX import (Phase 4) are fully wired end-to-end. SimpleFin sync is still a stub — CSV/OFX import is now a real way to get transactions in (alongside manual seeding), so a fresh install only stays empty until the user imports a statement. See `PLAN.md` for the roadmap.
 
 ## Architecture
 
@@ -35,6 +35,8 @@ When implementing a stub, replace both halves together: make the service functio
 
 **Rendering money in a template:** always use the `money` filter (`{{ amount | money }}`, registered in `app.templating`), never hand-rolled `"%.2f"|format(...)` with a literal `$` — that produces `$-19.99` instead of `-$19.99` for negative values. Exception: values that are already-unsigned magnitudes (e.g. `aggregation.py`'s `totals.income`/`totals.spending`/`by_category[].total`, which are deliberately abs()'d) don't need it, though using it anyway is harmless.
 
+**Multi-step flows without server-side session state (established in `routers/import_csv.py`, Phase 4):** the CSV import flow (upload → adjust mapping → confirm) needs state to survive multiple requests, but there's no session/pending-import table. Instead: the uploaded file is staged to a token-named temp file (OS temp dir — see `IMPORT_TMP_DIR`, deliberately outside `data/`, which is for real app data, not transient staging), and every other piece of state (account_id, file_kind, the column mapping) round-trips through hidden form fields on each step's response. Reach for this pattern before adding a new DB table just to hold "in-progress" state.
+
 ## Data model (`app/models.py`)
 
 - **Account** — `id`, `name`, `institution` (nullable), `account_type` (free string: "checking"/"savings"/"credit"/etc, no enum), `source` (default `"manual"`; `"manual"` or `"simplefin"`), `created_at`. Has many `transactions`.
@@ -42,6 +44,8 @@ When implementing a stub, replace both halves together: make the service functio
 - **Transaction** — `id`, `account_id` (FK), `category_id` (nullable FK), `date`, `amount` (`Numeric(12,2)`, **signed**: positive = income, negative = spending — deliberate, simplifies aggregation math, keep this convention), `description`, `external_id` (nullable — dedup key for re-imports/syncs).
 
 **Open decision:** where the SimpleFin access URL/token gets persisted is undecided — `config.py` currently has a single global `simplefin_access_url` setting (looks like a placeholder, doesn't fit multi-account use), and `simplefin.py`'s docstring flags "Settings or a dedicated table — TODO: decide which." Resolve this in Phase 5, not before — don't let it block earlier phases.
+
+`external_id` in practice: OFX imports use the bank's own `FITID` (a real stable id). CSV imports don't have one, so `csv_importer.py` derives a hash of (date, amount, description) — meaning two genuinely different transactions that happen to share the exact same date/amount/description would collide; within a single file this is disambiguated with a counter suffix, but a stray same-day/same-amount/same-description transaction reappearing across two *separate* CSV exports could still be mistaken for a duplicate and skipped on reimport. A real limitation of CSV lacking stable ids, not a bug to "fix" without a better signal to key off.
 
 ## Conventions
 
@@ -70,10 +74,13 @@ Resolved in Phase 0 (2026-08-27): git repo initialized, `.gitignore` added, `.en
 
 Resolved in Phase 3 (2026-08-27): `AccountCreate`/`AccountUpdate`/`TransactionUpdate` schemas now exist; accounts/transactions have real CRUD (accounts: create/read/update; transactions: read + category update).
 
+Resolved in Phase 4 (2026-08-28): CSV/OFX import is real — `csv_importer.py` parses both formats, `routers/import_csv.py` has a full upload → preview/mapping → confirm flow with dedup.
+
 Still open:
 - Account delete isn't implemented (hard-delete-vs-archive is a real decision, deferred until needed).
-- No way to manually create a single transaction — by design for now (see PLAN.md Phase 3), transactions arrive via import/sync once Phase 4/5 land.
+- No way to manually create a single transaction — by design for now, transactions arrive via import (Phase 4, done) or sync (Phase 5, not yet).
 - No category-management UI — categories come from a fixed default set (`app/services/categories.py`).
+- OFX parsing is a pragmatic regex extractor for the standard single-account `<STMTTRN>` structure, not a full SGML/XML parser — see `csv_importer.py`'s `parse_ofx` docstring for what it doesn't handle.
 
 ## Working agreement
 

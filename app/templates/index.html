@@ -16,19 +16,22 @@
     <h2>Transactions</h2>
     <p>Every transaction across your accounts, with inline categorization.</p>
   </a>
+  <a class="card" href="/import/">
+    <h2>Import</h2>
+    <p>Bring in a CSV or OFX/QFX statement export, with a preview before anything's saved.</p>
+  </a>
 </div>
 
 <div class="empty-state">
-  <h1>No transactions yet</h1>
+  <h1>Get started</h1>
   <p>
-    This is a fresh install — nothing has been imported or connected yet.
-    Add a CSV export from your bank, or connect one with SimpleFin, and
-    your ledger will show up here.
+    Add an account, then import a CSV or OFX export from your bank — or connect
+    one live with SimpleFin — and your ledger will show up here.
   </p>
   <div class="action-row">
-    <span class="pill">Import a CSV — coming in Phase 4</span>
+    <a class="btn" href="/accounts/">Add an account</a>
+    <a class="btn btn-secondary" href="/import/">Import a statement</a>
     <span class="pill">Connect a bank — coming in Phase 5</span>
-    <a class="btn" href="/docs">Browse the API</a>
   </div>
 </div>
 {% endblock %}
