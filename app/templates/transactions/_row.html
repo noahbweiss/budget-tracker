@@ -1,0 +1,21 @@
+<tr id="transaction-row-{{ transaction.id }}">
+  <td class="figure">{{ transaction.date }}</td>
+  <td>{{ transaction.account.name }}</td>
+  <td>{{ transaction.description }}</td>
+  <td>
+    <select
+      class="category-select"
+      hx-post="/transactions/{{ transaction.id }}/category"
+      hx-trigger="change"
+      hx-target="closest tr"
+      hx-swap="outerHTML"
+      name="category_id"
+    >
+      <option value="" {% if transaction.category_id is none %}selected{% endif %}>Uncategorized</option>
+      {% for c in categories %}
+      <option value="{{ c.id }}" {% if transaction.category_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+      {% endfor %}
+    </select>
+  </td>
+  <td class="figure {% if transaction.amount >= 0 %}figure--income{% else %}figure--expense{% endif %}">{{ transaction.amount | money }}</td>
+</tr>

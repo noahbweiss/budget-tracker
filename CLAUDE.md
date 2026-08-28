@@ -6,7 +6,7 @@ Reference doc for working on this repo. Read this before making changes; update 
 
 A local-first, open-source personal finance tracker (FastAPI + SQLite). Users track budget/spending/income across daily/weekly/monthly/quarterly/yearly views, with tiered bank connectivity: CSV/OFX import as the zero-config default, optional live sync via SimpleFin (user-supplied token, no bank credentials ever touch this app or a server we run). Goal is an open-source project anyone can one-click-run (Docker) and fork/extend, eventually packaged as a native desktop app via Tauri (`src-tauri/`, wraps the same FastAPI backend as a subprocess — no duplicated logic).
 
-**Status:** backend skeleton is real and working; frontend scaffolding is in place, and the dashboard (Phase 2) is fully wired end-to-end — real aggregation, real charts, real category breakdown. Accounts/transactions/import/SimpleFin are still stubs. See `PLAN.md` for the roadmap.
+**Status:** backend skeleton is real and working. Dashboard (Phase 2) and Accounts/Transactions (Phase 3) are fully wired end-to-end. CSV/OFX import and SimpleFin sync are still stubs — those are the only ways transactions can enter the system besides seeding directly, so a fresh install has no data until Phase 4/5 land. See `PLAN.md` for the roadmap.
 
 ## Architecture
 
@@ -31,10 +31,14 @@ When implementing a stub, replace both halves together: make the service functio
 
 **HTML-rendering pattern (established in `routers/dashboard.py`, Phase 2):** a router that renders UI imports `templates` from `app.templating` (not from `app.main` — that would be a circular import, since `main.py` imports the routers). It checks `request.headers.get("hx-request") == "true"` to decide whether to return a full page (extends `base.html`) or just the inner fragment for an HTMX swap target. Keep `<script>` tags out of swapped fragments — HTMX doesn't execute scripts injected via a swap — so any JS that needs to react to new content (e.g. rebuilding a Chart.js chart) belongs in a page-level script listening for `htmx:afterSwap`, not inside the fragment template itself.
 
+**When to use HTMX vs. a plain form (established in Phase 3):** not everything needs to be an HTMX partial. Infrequent, whole-record actions (create/edit an account) use a plain `<form method="post">` + a 303 redirect — works without JS, simplest code. Frequent, per-row actions (categorizing a transaction) use HTMX (`hx-post` + `hx-target="closest tr"` + `hx-swap="outerHTML"`) so there's no full-page reload. Pick based on frequency/graininess of the action, not by default.
+
+**Rendering money in a template:** always use the `money` filter (`{{ amount | money }}`, registered in `app.templating`), never hand-rolled `"%.2f"|format(...)` with a literal `$` — that produces `$-19.99` instead of `-$19.99` for negative values. Exception: values that are already-unsigned magnitudes (e.g. `aggregation.py`'s `totals.income`/`totals.spending`/`by_category[].total`, which are deliberately abs()'d) don't need it, though using it anyway is harmless.
+
 ## Data model (`app/models.py`)
 
 - **Account** — `id`, `name`, `institution` (nullable), `account_type` (free string: "checking"/"savings"/"credit"/etc, no enum), `source` (default `"manual"`; `"manual"` or `"simplefin"`), `created_at`. Has many `transactions`.
-- **Category** — `id`, `name` (unique), `kind` (default `"expense"`; `"income"` or `"expense"`). Has many `transactions`.
+- **Category** — `id`, `name` (unique), `kind` (default `"expense"`; `"income"` or `"expense"`). Has many `transactions`. No category-management UI exists yet — `app/services/categories.py::ensure_default_categories()` seeds a fixed starter set on first startup (idempotent, only fires on an empty table) so the categorization UI has something to offer.
 - **Transaction** — `id`, `account_id` (FK), `category_id` (nullable FK), `date`, `amount` (`Numeric(12,2)`, **signed**: positive = income, negative = spending — deliberate, simplifies aggregation math, keep this convention), `description`, `external_id` (nullable — dedup key for re-imports/syncs).
 
 **Open decision:** where the SimpleFin access URL/token gets persisted is undecided — `config.py` currently has a single global `simplefin_access_url` setting (looks like a placeholder, doesn't fit multi-account use), and `simplefin.py`'s docstring flags "Settings or a dedicated table — TODO: decide which." Resolve this in Phase 5, not before — don't let it block earlier phases.
@@ -64,8 +68,12 @@ Rationale: keeps "clone and run" trivial for forkers (no `npm install`/build pip
 
 Resolved in Phase 0 (2026-08-27): git repo initialized, `.gitignore` added, `.env`/`.env.example` added (README's Docker instructions now include `cp .env.example .env`), `dashboard.py` returns a proper 400 via `HTTPException` for an invalid `range_type`.
 
+Resolved in Phase 3 (2026-08-27): `AccountCreate`/`AccountUpdate`/`TransactionUpdate` schemas now exist; accounts/transactions have real CRUD (accounts: create/read/update; transactions: read + category update).
+
 Still open:
-- No `AccountCreate`/`TransactionUpdate`-style Pydantic request schemas yet (only `simplefin.py`'s `ConnectRequest` exists) — `POST /accounts/` doesn't accept a body yet. Tracked as Phase 3 in `PLAN.md`.
+- Account delete isn't implemented (hard-delete-vs-archive is a real decision, deferred until needed).
+- No way to manually create a single transaction — by design for now (see PLAN.md Phase 3), transactions arrive via import/sync once Phase 4/5 land.
+- No category-management UI — categories come from a fixed default set (`app/services/categories.py`).
 
 ## Working agreement
 

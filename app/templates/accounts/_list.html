@@ -1,0 +1,22 @@
+{% if accounts %}
+<div class="card-grid">
+  {% for row in accounts %}
+  <a class="card account-card" href="/accounts/{{ row.account.id }}">
+    <h2>{{ row.account.name }}</h2>
+    <p class="account-card__meta">
+      {{ row.account.institution or "No institution" }} · {{ row.account.account_type | capitalize }}
+    </p>
+    <p class="figure figure--big {% if row.net >= 0 %}figure--income{% else %}figure--expense{% endif %}">
+      {{ row.net | money }}
+    </p>
+    <span class="pill">{{ row.transaction_count }} transaction{{ "" if row.transaction_count == 1 else "s" }}</span>
+    {% if row.account.source == "simplefin" %}<span class="pill">Synced</span>{% endif %}
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+  <h1>No accounts yet</h1>
+  <p>Add your first account above to start tracking transactions against it.</p>
+</div>
+{% endif %}

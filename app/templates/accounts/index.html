@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}Accounts — Finance Tracker{% endblock %}
+
+{% block content %}
+<h1>Accounts</h1>
+
+<div class="card form-card">
+  <h2>Add an account</h2>
+  <form method="post" action="/accounts/" class="form-grid">
+    <label>
+      Name
+      <input type="text" name="name" required maxlength="120" placeholder="e.g. Everyday Checking" />
+    </label>
+    <label>
+      Institution <span class="form-optional">(optional)</span>
+      <input type="text" name="institution" maxlength="120" placeholder="e.g. Ledger Bank" />
+    </label>
+    <label>
+      Type
+      <select name="account_type" required>
+        {% for t in account_types %}
+        <option value="{{ t }}">{{ t | capitalize }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit" class="btn">Add account</button>
+  </form>
+</div>
+
+{% include "accounts/_list.html" %}
+{% endblock %}

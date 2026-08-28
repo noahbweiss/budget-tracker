@@ -9,12 +9,19 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 
-from app.database import Base, engine
+from app.database import Base, SessionLocal, engine
 from app.routers import accounts, dashboard, import_csv, simplefin, transactions
+from app.services.categories import ensure_default_categories
 from app.templating import templates
 
 # TODO: replace with Alembic migrations once the schema stabilizes.
 Base.metadata.create_all(bind=engine)
+
+# Idempotent — only inserts if the categories table is empty. See
+# app/services/categories.py for why this exists (no category-management
+# UI yet, so the transaction categorization UI needs something to offer).
+with SessionLocal() as _startup_db:
+    ensure_default_categories(_startup_db)
 
 app = FastAPI(title="Finance Tracker")
 

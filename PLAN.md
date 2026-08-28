@@ -29,12 +29,19 @@ Not done yet, deliberately deferred to later phases: dashboard template with rea
 
 Caught during end-to-end verification (not by the unit tests, which never touched the template layer): `Decimal` isn't JSON-serializable, so the `|tojson` filter on the chart's `data-buckets` attribute 500'd against real data. Fixed by converting just the chart-bound bucket values to `float` at the router/template boundary — `aggregation.py` itself still returns `Decimal` throughout for precision. Worth remembering: **aggregation unit tests alone don't cover template rendering — always smoke-test a route against seeded data, not just an empty DB.**
 
-## Phase 3 — Accounts & transactions pages
+## Phase 3 — Accounts & transactions pages ✅ (2026-08-27)
 
-- [ ] Add `AccountCreate` / `AccountUpdate` and `TransactionUpdate` Pydantic schemas (none exist yet except `simplefin.py`'s `ConnectRequest`).
-- [ ] Real CRUD in `app/routers/accounts.py` and `app/routers/transactions.py` (currently `GET` returns `[]`, `POST` returns a stub note).
-- [ ] List/detail templates for accounts and transactions.
-- [ ] Manual transaction categorization UI (assign/change `category_id`).
+- [x] `AccountCreate`/`AccountUpdate` (in `routers/accounts.py`) and `TransactionUpdate` (in `routers/transactions.py`) Pydantic schemas, following `simplefin.py`'s existing precedent of defining request schemas inline in the router file rather than a shared schemas module.
+- [x] Real CRUD in `app/routers/accounts.py` (Create/Read/Update — list, create, detail, edit) and `app/routers/transactions.py` (Read + category Update). Account create/update use plain POST + a 303 redirect (progressive enhancement, no JS required); transaction categorization uses HTMX (`hx-post` on a `<select>`, swaps just its own `<tr>`) since it's a frequent per-row action. Covered by 15 new tests (`tests/test_accounts.py`, `tests/test_transactions.py`) against an isolated in-memory DB — see the new `client` fixture in `tests/conftest.py`.
+- [x] List/detail templates: `accounts/{index,_list,detail}.html`, `transactions/{index,_row}.html`.
+- [x] Manual transaction categorization UI — the category `<select>` in every transaction row.
+- [x] `app/services/categories.py`: `ensure_default_categories()`, called once at startup (`main.py`). Not originally scoped, but added because there was no way to create a category at all otherwise — the categorization UI would have had nothing to assign. Idempotent (only seeds an empty table), and documented as a stand-in until real category management exists.
+
+**Deliberately not done:** account delete (hard-delete-vs-archive is a real design decision, not a default to guess at — revisit when actually needed); manual transaction creation (transactions are still meant to arrive via import/sync in Phase 4/5, per `TransactionUpdate` — not `TransactionCreate` — being the only schema this phase called for); inline form-validation UX (a bad submission gets a plain 422/400, not a re-rendered form with field errors).
+
+Caught during end-to-end verification against seeded data (again, not by the router tests — same lesson as Phase 2): raw `"%.2f"|format(amount)` on a negative signed `Decimal` plus a literal `$` prefix rendered as `$-19.99` instead of `-$19.99`. Fixed with a shared `money` Jinja filter (`app/templating.py`) rather than patching each template — every future page that renders a raw transaction amount should use `{{ amount | money }}`, not hand-rolled `%.2f` formatting.
+
+Also found: SQLite `:memory:` test databases are connection-scoped — `TestClient` runs sync route handlers in a worker thread, which can grab a different pooled connection than the one `Base.metadata.create_all()` ran DDL on, producing "no such table" errors. Fixed with `poolclass=StaticPool` in `tests/conftest.py`'s `db_session` fixture.
 
 ## Phase 4 — CSV/OFX import
 

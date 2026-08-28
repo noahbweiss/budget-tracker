@@ -30,7 +30,7 @@
   </div>
   <div class="card">
     <h2>Net</h2>
-    <p class="figure figure--big {% if totals.net >= 0 %}figure--income{% else %}figure--expense{% endif %}">${{ "%.2f"|format(totals.net) }}</p>
+    <p class="figure figure--big {% if totals.net >= 0 %}figure--income{% else %}figure--expense{% endif %}">{{ totals.net | money }}</p>
   </div>
 </div>
 
