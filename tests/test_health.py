@@ -46,3 +46,17 @@ def test_dashboard_htmx_request_returns_fragment_only():
     assert response.status_code == 200
     assert "<!doctype html>" not in response.text.lower()
     assert "range-switcher" in response.text
+
+
+def test_dashboard_daily_has_no_chart():
+    response = client.get("/dashboard/daily")
+    assert response.status_code == 200
+    assert 'id="dashboard-chart"' not in response.text
+
+
+def test_dashboard_offset_navigates_periods():
+    current = client.get("/dashboard/monthly")
+    previous = client.get("/dashboard/monthly?offset=1")
+    assert current.status_code == previous.status_code == 200
+    assert "period-nav__today" not in current.text  # already viewing the current period
+    assert "period-nav__today" in previous.text  # viewing a past period — offers a way back

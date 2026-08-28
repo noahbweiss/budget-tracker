@@ -53,6 +53,13 @@ Also found: SQLite `:memory:` test databases are connection-scoped — `TestClie
 
 Caught during end-to-end verification against a real uploaded file (same lesson every phase so far — router/unit tests didn't catch this since neither exercises the actual multipart upload path): none this time, actually — first phase where the live walkthrough (debit/credit auto-detection, `$`-prefixed amount, an intentional exact-duplicate row, full confirm → re-upload → dedup round trip) matched the tests exactly. Recorded here anyway, since the pattern of "verify against real data before calling it done" is what caught the Phase 2 and Phase 3 bugs and is worth keeping regardless of whether it finds something every time.
 
+## Post-Phase-4 fixes — real-usage feedback (2026-08-28)
+
+Once real data was actually imported and used, two things turned out to be wrong in ways the phase-by-phase build-out hadn't surfaced:
+
+- [x] **Dashboard redesigned from "all-history chart" to "one period at a time."** The original Phase 2 design bucketed *every* transaction ever, by range_type granularity, into one long chart — so "daily" showed a bar for every single day the account had ever existed, not what a budgeting dashboard should default to. Replaced with `aggregation.get_period_dashboard(db, range_type, offset)`: each range shows the *current* period (today / this week / this month / this quarter / this year) by default, navigable via `offset` (prev/next buttons, 0 = current). Within a period, the chart breaks it into a finer sub-bucket — a month into its days, a quarter into its months, a week into its days — zero-filled for every sub-period, not just ones with transactions, so a sparse month doesn't look like it only has 3 days. "Daily" has no chart (nothing to sub-divide a single day into without time-of-day data) — just totals and category breakdown. The current period also shows a "Day X of Y" progress note (e.g. "Day 59 of 92" for a quarter). This is a full replacement of `bucket_transactions()`, not an addition alongside it — the old all-history behavior is exactly what was wrong. 26 tests (`tests/test_aggregation.py`, rewritten), heavy on date-math edge cases (quarter/year boundaries, leap years) since that's where the real risk was.
+- [x] Nav/route-level tests updated (`tests/test_health.py`) for offset navigation and the daily-has-no-chart case.
+
 ## Phase 5 — SimpleFin sync
 
 - [ ] Resolve the token-storage decision from `CLAUDE.md` (dedicated table vs. settings) — this blocks the rest of the phase.

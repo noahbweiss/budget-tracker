@@ -423,6 +423,74 @@ a.card:hover {
   color: var(--accent-ink);
 }
 
+.period-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.period-nav__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--bg-elevated);
+  color: var(--ink);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.period-nav__btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.period-nav__btn--disabled {
+  opacity: 0.35;
+  cursor: default;
+  pointer-events: none;
+}
+
+.period-nav__label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  min-width: 14rem;
+  text-align: center;
+}
+
+.period-nav__title {
+  font-weight: 650;
+  font-size: 1.05rem;
+}
+
+.period-nav__progress {
+  font-size: 0.78rem;
+  color: var(--ink-muted);
+  font-family: var(--font-mono);
+}
+
+.period-nav__today {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 0.78rem;
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+}
+
+.period-nav__today:hover {
+  text-decoration: underline;
+}
+
 #dashboard-chart {
   max-height: 320px;
 }

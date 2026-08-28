@@ -38,7 +38,7 @@
     chart = new Chart(canvas, {
       type: "bar",
       data: {
-        labels: buckets.map((b) => b.period),
+        labels: buckets.map((b) => b.label),
         datasets: [
           {
             label: "Income",

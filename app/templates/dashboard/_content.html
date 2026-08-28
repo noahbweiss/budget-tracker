@@ -1,9 +1,9 @@
 {# Dashboard inner content — rendered inside #dashboard-content in
    dashboard/index.html on a normal page load, and returned standalone
-   (this file only, no layout) for HTMX range-switch swaps. Keep this
-   fragment free of <script> tags: HTMX doesn't execute scripts injected
-   via a swap, so chart re-render logic lives in js/dashboard.js instead,
-   listening for htmx:afterSwap. #}
+   (this file only, no layout) for HTMX range-switch/period-nav swaps.
+   Keep this fragment free of <script> tags: HTMX doesn't execute scripts
+   injected via a swap, so chart re-render logic lives in js/dashboard.js
+   instead, listening for htmx:afterSwap. #}
 
 <div class="range-switcher" role="tablist" aria-label="Select time range">
   {% for r in valid_ranges %}
@@ -17,6 +17,48 @@
     {% if r == range_type %}aria-current="true"{% endif %}
   >{{ r | capitalize }}</button>
   {% endfor %}
+</div>
+
+<div class="period-nav">
+  <button
+    type="button"
+    class="period-nav__btn"
+    hx-get="/dashboard/{{ range_type }}?offset={{ offset + 1 }}"
+    hx-target="#dashboard-content"
+    hx-swap="innerHTML"
+    hx-push-url="/dashboard/{{ range_type }}?offset={{ offset + 1 }}"
+    aria-label="Previous period"
+  >‹</button>
+
+  <div class="period-nav__label">
+    <span class="period-nav__title">{{ period_label }}</span>
+    {% if progress %}
+    <span class="period-nav__progress">Day {{ progress.elapsed }} of {{ progress.total }}</span>
+    {% elif offset != 0 %}
+    <button
+      type="button"
+      class="period-nav__today"
+      hx-get="/dashboard/{{ range_type }}"
+      hx-target="#dashboard-content"
+      hx-swap="innerHTML"
+      hx-push-url="/dashboard/{{ range_type }}"
+    >Jump to current</button>
+    {% endif %}
+  </div>
+
+  {% if can_go_forward %}
+  <button
+    type="button"
+    class="period-nav__btn"
+    hx-get="/dashboard/{{ range_type }}?offset={{ offset - 1 }}"
+    hx-target="#dashboard-content"
+    hx-swap="innerHTML"
+    hx-push-url="/dashboard/{{ range_type }}?offset={{ offset - 1 }}"
+    aria-label="Next period"
+  >›</button>
+  {% else %}
+  <span class="period-nav__btn period-nav__btn--disabled" aria-hidden="true">›</span>
+  {% endif %}
 </div>
 
 <div class="card-grid dashboard-summary">
@@ -58,7 +100,7 @@
 </div>
 {% else %}
 <div class="empty-state">
-  <h1>No transactions in this range</h1>
+  <h1>No transactions in this period</h1>
   <p>Once you import a CSV or connect a bank, spending and income will show up here.</p>
 </div>
 {% endif %}

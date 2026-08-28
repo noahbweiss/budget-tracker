@@ -35,6 +35,8 @@ When implementing a stub, replace both halves together: make the service functio
 
 **Rendering money in a template:** always use the `money` filter (`{{ amount | money }}`, registered in `app.templating`), never hand-rolled `"%.2f"|format(...)` with a literal `$` — that produces `$-19.99` instead of `-$19.99` for negative values. Exception: values that are already-unsigned magnitudes (e.g. `aggregation.py`'s `totals.income`/`totals.spending`/`by_category[].total`, which are deliberately abs()'d) don't need it, though using it anyway is harmless.
 
+**Dashboard = one period at a time, not all-history (redesigned post-Phase-4, per real usage feedback):** `GET /dashboard/{range_type}?offset=N` shows the *current* period at `offset=0` (today / this week / this month / this quarter / this year), stepping back one period per `offset` increment — never a chart spanning an account's entire history. `aggregation.get_period_dashboard()` is the one function that computes this; don't reintroduce an "all transactions bucketed by granularity" path. If you add a new range-shaped feature, it should default to the current period too, not "everything."
+
 **Multi-step flows without server-side session state (established in `routers/import_csv.py`, Phase 4):** the CSV import flow (upload → adjust mapping → confirm) needs state to survive multiple requests, but there's no session/pending-import table. Instead: the uploaded file is staged to a token-named temp file (OS temp dir — see `IMPORT_TMP_DIR`, deliberately outside `data/`, which is for real app data, not transient staging), and every other piece of state (account_id, file_kind, the column mapping) round-trips through hidden form fields on each step's response. Reach for this pattern before adding a new DB table just to hold "in-progress" state.
 
 ## Data model (`app/models.py`)
@@ -63,7 +65,7 @@ Rationale: keeps "clone and run" trivial for forkers (no `npm install`/build pip
 
 **Visual style guideline (starting point, revise as pages get built):**
 - Clean, minimal budgeting-app aesthetic — think restrained dashboard, not marketing-site flashy. Card-based layout for account summaries, category breakdowns, and totals.
-- Chart.js for time-bucketed views (line/bar charts for spend & income over the selected range).
+- Chart.js for spend/income within the selected period — see the dashboard convention below for what "period" means.
 - Light + dark mode via CSS custom properties (`:root` variables, no separate stylesheets), respecting `prefers-color-scheme` by default.
 - Color used sparingly and meaningfully: green/red reserved for income/expense signal (matching the model's signed-amount convention), not used decoratively elsewhere.
 - HTMX handles the interactive bits (range switching, live-updating fragments) — server returns rendered HTML fragments, not JSON, to HTMX-triggered requests. (`dashboard.py`'s own TODO already anticipates this: "return an HTMX-rendered template fragment instead of raw JSON.")
