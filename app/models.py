@@ -27,7 +27,21 @@ class Account(Base):
     # app/services/balances.py for how these combine.
     starting_balance: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
 
+    # Populated only for source == "simplefin" accounts. SimpleFin reports
+    # one current balance per account on every sync (not a per-transaction
+    # running balance like some CSV exports) — see
+    # app/services/simplefin_sync.py. simplefin_account_id is the id
+    # SimpleFin uses for this account within its bridge connection, used to
+    # match an existing local Account on resync instead of recreating it.
+    simplefin_account_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    simplefin_connection_id: Mapped[int | None] = mapped_column(
+        ForeignKey("simplefin_connections.id"), nullable=True
+    )
+    reported_balance: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    reported_balance_as_of: Mapped[date | None] = mapped_column(Date, nullable=True)
+
     transactions: Mapped[list["Transaction"]] = relationship(back_populates="account")
+    simplefin_connection: Mapped["SimplefinConnection | None"] = relationship(back_populates="accounts")
 
 
 class Category(Base):
@@ -67,3 +81,24 @@ class Transaction(Base):
 
     account: Mapped["Account"] = relationship(back_populates="transactions")
     category: Mapped["Category | None"] = relationship(back_populates="transactions")
+
+
+class SimplefinConnection(Base):
+    """One SimpleFin Bridge connection — in practice almost always just one
+    row, but modeled as a table (not a single Settings value) since one
+    access_url can cover multiple bank accounts and a user could in theory
+    connect more than one bridge. See app/services/simplefin_client.py for
+    the protocol this stores credentials for.
+    """
+
+    __tablename__ = "simplefin_connections"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # Embeds HTTP Basic Auth credentials (https://user:pass@bridge/...) —
+    # this is the actual bearer credential for pulling bank data, treat it
+    # like a secret: never rendered back into any template.
+    access_url: Mapped[str] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    accounts: Mapped[list["Account"]] = relationship(back_populates="simplefin_connection")

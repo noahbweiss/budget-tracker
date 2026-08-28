@@ -1,6 +1,7 @@
-"""Tests for app.services.balances.resolve_balance's three-tier fallback:
-bank-reported balance > starting_balance + net > net alone (honestly
-labeled as not a real balance).
+"""Tests for app.services.balances.resolve_balance's four-tier fallback:
+account-level reported balance (SimpleFin) > transaction-level reported
+balance (CSV/OFX) > starting_balance + net > net alone (honestly labeled
+as not a real balance).
 """
 from datetime import date
 from decimal import Decimal
@@ -11,6 +12,25 @@ from app.services.balances import resolve_balance
 
 def _txn(account_id, d, amount, balance=None):
     return Transaction(account_id=account_id, date=d, amount=amount, description="x", balance=balance)
+
+
+def test_account_level_reported_balance_outranks_everything(db_session):
+    account = Account(
+        name="Checking",
+        account_type="checking",
+        starting_balance=Decimal("999.00"),
+        reported_balance=Decimal("2050.00"),
+        reported_balance_as_of=date(2026, 6, 2),
+    )
+    db_session.add(account)
+    db_session.flush()
+    db_session.add(_txn(account.id, date(2026, 6, 1), 100, balance=Decimal("1.00")))  # would win tier 2
+    db_session.commit()
+
+    result = resolve_balance(db_session, account)
+    assert result.source == "reported"
+    assert result.amount == Decimal("2050.00")
+    assert result.as_of == date(2026, 6, 2)
 
 
 def test_uses_latest_reported_balance_when_present(db_session):

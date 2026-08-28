@@ -41,6 +41,10 @@ def get_db():
 _ADDED_COLUMNS = [
     ("accounts", "starting_balance", "NUMERIC(12, 2)"),
     ("transactions", "balance", "NUMERIC(12, 2)"),
+    ("accounts", "simplefin_account_id", "VARCHAR(255)"),
+    ("accounts", "simplefin_connection_id", "INTEGER"),
+    ("accounts", "reported_balance", "NUMERIC(12, 2)"),
+    ("accounts", "reported_balance_as_of", "DATE"),
 ]
 
 

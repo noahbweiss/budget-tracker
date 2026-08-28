@@ -5,17 +5,23 @@ transactions alone unless something actually tells us — the model has no
 "opening balance" baked in, and a plain sum of tracked transactions will
 never match a real bank balance if any activity happened before the
 first imported transaction, which is the common case (nobody imports an
-account's entire lifetime on day one). Three-tier fallback, most
+account's entire lifetime on day one). Four-tier fallback, most
 trustworthy first:
 
-1. The most recent transaction that carries its own `balance` (from a
+1. `Account.reported_balance` — set by a SimpleFin sync, which reports
+   one current balance per account directly (not a per-transaction
+   running balance), refreshed on every sync. See
+   app/services/simplefin_sync.py.
+2. The most recent transaction that carries its own `balance` (from a
    CSV column the bank actually reports — see csv_importer.py's
-   ColumnMapping.balance — or, eventually, SimpleFin) — this is the
-   bank's own number, not something we computed, so it's exact.
-2. Account.starting_balance (a one-time user-entered baseline, set on
+   ColumnMapping.balance). This is CSV/OFX's equivalent of tier 1 — a
+   bank-reported number, not something we computed — just reported at
+   transaction granularity instead of account granularity, so it's a
+   separate tier rather than merged with tier 1.
+3. Account.starting_balance (a one-time user-entered baseline, set on
    the account edit form) plus the sum of every tracked transaction —
    an estimate, but usually close.
-3. Just the sum of tracked transactions, honestly labeled as *not* a
+4. Just the sum of tracked transactions, honestly labeled as *not* a
    real balance — it has no idea what existed before tracking started.
 """
 from dataclasses import dataclass
@@ -35,6 +41,11 @@ class AccountBalance:
 
 
 def resolve_balance(db: Session, account: Account) -> AccountBalance:
+    if account.reported_balance is not None:
+        return AccountBalance(
+            amount=Decimal(account.reported_balance), source="reported", as_of=account.reported_balance_as_of
+        )
+
     latest_reported = (
         db.query(Transaction)
         .filter(Transaction.account_id == account.id, Transaction.balance.isnot(None))

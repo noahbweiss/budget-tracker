@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}Connect a bank — Finance Tracker{% endblock %}
+
+{% block content %}
+<h1>Connect a bank</h1>
+
+{% if sync_error or sync_result %}
+<div class="card">
+  {% if sync_error %}
+  <p><strong>Sync failed:</strong> {{ sync_error }}</p>
+  {% endif %}
+  {% if sync_result %}
+  <p>
+    {{ sync_result.accounts_created }} account{{ "" if sync_result.accounts_created == 1 else "s" }} added,
+    {{ sync_result.accounts_updated }} updated ·
+    {{ sync_result.transactions_imported }} transaction{{ "" if sync_result.transactions_imported == 1 else "s" }} imported,
+    {{ sync_result.transactions_skipped }} already up to date.
+  </p>
+  {% for err in sync_result.errors %}
+  <p class="account-card__meta">SimpleFin reported: {{ err }}</p>
+  {% endfor %}
+  {% endif %}
+</div>
+{% endif %}
+
+{% if connection %}
+<div class="card">
+  <h2>Connected</h2>
+  <p class="account-card__meta">
+    Connected {{ connection.created_at.strftime("%b %d, %Y") }}
+    {% if connection.last_synced_at %}· last synced {{ connection.last_synced_at.strftime("%b %d, %Y %H:%M") }}{% endif %}
+  </p>
+  <form method="post" action="/simplefin/sync" class="import-actions">
+    <button type="submit" class="btn">Sync now</button>
+  </form>
+</div>
+
+{% if accounts %}
+<div class="card-grid" style="margin-top: 1rem;">
+  {% for a in accounts %}
+  <a class="card account-card" href="/accounts/{{ a.id }}">
+    <h2>{{ a.name }}</h2>
+    <p class="account-card__meta">{{ a.institution or "No institution" }} · {{ a.account_type | capitalize }}</p>
+    <span class="pill">Synced</span>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% else %}
+<div class="card form-card">
+  <h2>Paste your SimpleFin setup token</h2>
+  <p class="account-card__meta">
+    Generate one at your SimpleFin bridge provider — this happens entirely outside this app.
+    Your bank password is never seen by us, only by your bank and SimpleFin's own auth flow.
+  </p>
+  <form method="post" action="/simplefin/connect" class="form-grid">
+    <label>
+      Setup token
+      <input type="text" name="setup_token" required placeholder="paste the token here" />
+    </label>
+    <button type="submit" class="btn">Connect</button>
+  </form>
+</div>
+{% endif %}
+{% endblock %}
