@@ -6,7 +6,7 @@ Reference doc for working on this repo. Read this before making changes; update 
 
 A local-first, open-source personal finance tracker (FastAPI + SQLite). Users track budget/spending/income across daily/weekly/monthly/quarterly/yearly views, with tiered bank connectivity: CSV/OFX import as the zero-config default, optional live sync via SimpleFin (user-supplied token, no bank credentials ever touch this app or a server we run). Goal is an open-source project anyone can one-click-run (Docker) and fork/extend, eventually packaged as a native desktop app via Tauri (`src-tauri/`, wraps the same FastAPI backend as a subprocess — no duplicated logic).
 
-**Status:** backend skeleton is real and working. Dashboard (Phase 2), Accounts/Transactions (Phase 3), and CSV/OFX import (Phase 4) are fully wired end-to-end. SimpleFin sync is still a stub — CSV/OFX import is now a real way to get transactions in (alongside manual seeding), so a fresh install only stays empty until the user imports a statement. See `PLAN.md` for the roadmap.
+**Status:** backend skeleton is real and working. Dashboard (Phase 2), Accounts/Transactions (Phase 3), and CSV/OFX import (Phase 4) are fully wired end-to-end, plus two post-Phase-4 fixes from real usage: the dashboard shows one period at a time (not all-history), and account balance is trustworthy (bank-reported when available, not just a raw transaction sum). SimpleFin sync is still a stub. See `PLAN.md` for the roadmap.
 
 ## Architecture
 
@@ -41,13 +41,17 @@ When implementing a stub, replace both halves together: make the service functio
 
 ## Data model (`app/models.py`)
 
-- **Account** — `id`, `name`, `institution` (nullable), `account_type` (free string: "checking"/"savings"/"credit"/etc, no enum), `source` (default `"manual"`; `"manual"` or `"simplefin"`), `created_at`. Has many `transactions`.
+- **Account** — `id`, `name`, `institution` (nullable), `account_type` (free string: "checking"/"savings"/"credit"/etc, no enum), `source` (default `"manual"`; `"manual"` or `"simplefin"`), `created_at`, `starting_balance` (nullable — optional user-entered baseline, see `services/balances.py`). Has many `transactions`.
 - **Category** — `id`, `name` (unique), `kind` (default `"expense"`; `"income"` or `"expense"`). Has many `transactions`. No category-management UI exists yet — `app/services/categories.py::ensure_default_categories()` seeds a fixed starter set on first startup (idempotent, only fires on an empty table) so the categorization UI has something to offer.
-- **Transaction** — `id`, `account_id` (FK), `category_id` (nullable FK), `date`, `amount` (`Numeric(12,2)`, **signed**: positive = income, negative = spending — deliberate, simplifies aggregation math, keep this convention), `description`, `external_id` (nullable — dedup key for re-imports/syncs).
+- **Transaction** — `id`, `account_id` (FK), `category_id` (nullable FK), `date`, `amount` (`Numeric(12,2)`, **signed**: positive = income, negative = spending — deliberate, simplifies aggregation math, keep this convention), `description`, `external_id` (nullable — dedup key for re-imports/syncs), `balance` (nullable — the account's running balance as of this transaction, when the import source reports one; see `services/balances.py`).
 
 **Open decision:** where the SimpleFin access URL/token gets persisted is undecided — `config.py` currently has a single global `simplefin_access_url` setting (looks like a placeholder, doesn't fit multi-account use), and `simplefin.py`'s docstring flags "Settings or a dedicated table — TODO: decide which." Resolve this in Phase 5, not before — don't let it block earlier phases.
 
 `external_id` in practice: OFX imports use the bank's own `FITID` (a real stable id). CSV imports don't have one, so `csv_importer.py` derives a hash of (date, amount, description) — meaning two genuinely different transactions that happen to share the exact same date/amount/description would collide; within a single file this is disambiguated with a counter suffix, but a stray same-day/same-amount/same-description transaction reappearing across two *separate* CSV exports could still be mistaken for a duplicate and skipped on reimport. A real limitation of CSV lacking stable ids, not a bug to "fix" without a better signal to key off.
+
+**"What's my balance" is never a raw sum (established post-Phase-4, real usage feedback):** never compute an account's displayed balance as just `sum(transaction.amount)` — that will not match a real bank balance unless every transaction the account has ever had was imported, which is the unusual case, not the default. Always go through `app.services.balances.resolve_balance()`, which does the three-tier fallback (bank-reported `Transaction.balance` → `Account.starting_balance` + net → honestly-labeled net-only) and returns an `AccountBalance` with a `source` your template must surface (see `templates/macros.html`'s `balance_caption`), not just the number alone.
+
+**Schema changes after real user data exists:** `Base.metadata.create_all()` (called at startup in `main.py`) only creates *missing* tables — it silently does nothing to a table that already exists, even if the model gained a new column. Any column added to a model must also go into `app.database._ADDED_COLUMNS` (used by `ensure_schema_migrations()`, called right after `create_all()`) or an existing `data/finance.db` will never get it and the app will error the first time it's queried. This is a deliberately tiny stopgap, not a real migration system — reach for actual Alembic once the schema is far enough along to justify it (see the existing TODO in `database.py`/`main.py`).
 
 ## Conventions
 
@@ -78,10 +82,13 @@ Resolved in Phase 3 (2026-08-27): `AccountCreate`/`AccountUpdate`/`TransactionUp
 
 Resolved in Phase 4 (2026-08-28): CSV/OFX import is real — `csv_importer.py` parses both formats, `routers/import_csv.py` has a full upload → preview/mapping → confirm flow with dedup.
 
+Resolved post-Phase-4 (2026-08-28, real usage feedback): dashboard shows one period at a time instead of all history; account balance goes through a three-tier fallback (bank-reported > starting balance + net > honestly-labeled net-only) instead of a raw transaction sum that never matched real bank balances.
+
 Still open:
 - Account delete isn't implemented (hard-delete-vs-archive is a real decision, deferred until needed).
 - No way to manually create a single transaction — by design for now, transactions arrive via import (Phase 4, done) or sync (Phase 5, not yet).
 - No category-management UI — categories come from a fixed default set (`app/services/categories.py`).
+- Accounts-page UI issues flagged by real usage, not yet itemized — waiting on specifics before a UI-polish pass.
 - OFX parsing is a pragmatic regex extractor for the standard single-account `<STMTTRN>` structure, not a full SGML/XML parser — see `csv_importer.py`'s `parse_ofx` docstring for what it doesn't handle.
 
 ## Working agreement

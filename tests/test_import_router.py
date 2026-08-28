@@ -5,6 +5,11 @@ from app.models import Account, Transaction
 
 GOOD_CSV = b"Date,Description,Amount\n2026-07-01,Paycheck,3200.00\n2026-07-02,Rent,-1450.00\n"
 UNRECOGNIZED_CSV = b"When,What,HowMuch\n2026-07-01,Paycheck,3200.00\n"
+CSV_WITH_BALANCE = (
+    b"Date,Description,Amount,Balance\n"
+    b"2026-07-01,Deposit,500.00,600.00\n"
+    b"2026-07-02,Rent,-1450.00,-850.00\n"
+)
 
 SAMPLE_OFX = b"""OFXHEADER:100
 <OFX>
@@ -200,6 +205,89 @@ def test_upload_rejects_unsupported_extension(client, db_session):
         files={"file": ("statement.txt", io.BytesIO(b"nope"), "text/plain")},
     )
     assert response.status_code == 400
+
+
+def test_confirm_captures_balance_on_new_transactions(client, db_session):
+    account = _make_account(db_session)
+    upload = client.post(
+        "/import/upload",
+        data={"account_id": str(account.id)},
+        files={"file": ("statement.csv", io.BytesIO(CSV_WITH_BALANCE), "text/csv")},
+    )
+    token = _extract_hidden_value(upload.text, "token")
+
+    confirm = client.post(
+        "/import/confirm",
+        data={
+            "token": token,
+            "account_id": str(account.id),
+            "file_kind": "csv",
+            "date_column": "Date",
+            "description_column": "Description",
+            "amount_column": "Amount",
+            "balance_column": "Balance",
+        },
+    )
+    assert confirm.status_code == 200
+
+    transactions = db_session.query(Transaction).filter(Transaction.account_id == account.id).order_by(Transaction.date).all()
+    assert transactions[0].balance == 600
+    assert transactions[1].balance == -850
+
+
+def test_reimport_with_balance_backfills_existing_transactions(client, db_session):
+    account = _make_account(db_session)
+    no_balance_csv = b"Date,Description,Amount\n2026-07-01,Deposit,500.00\n2026-07-02,Rent,-1450.00\n"
+
+    # First import: no balance column mapped at all.
+    upload1 = client.post(
+        "/import/upload",
+        data={"account_id": str(account.id)},
+        files={"file": ("statement.csv", io.BytesIO(no_balance_csv), "text/csv")},
+    )
+    token1 = _extract_hidden_value(upload1.text, "token")
+    confirm1 = client.post(
+        "/import/confirm",
+        data={
+            "token": token1,
+            "account_id": str(account.id),
+            "file_kind": "csv",
+            "date_column": "Date",
+            "description_column": "Description",
+            "amount_column": "Amount",
+        },
+    )
+    assert "Imported 2" in confirm1.text
+    transactions = db_session.query(Transaction).filter(Transaction.account_id == account.id).all()
+    assert all(t.balance is None for t in transactions)
+
+    # Re-upload the same dates/amounts/descriptions, this time with a
+    # Balance column mapped — should backfill, not duplicate.
+    upload2 = client.post(
+        "/import/upload",
+        data={"account_id": str(account.id)},
+        files={"file": ("statement.csv", io.BytesIO(CSV_WITH_BALANCE), "text/csv")},
+    )
+    token2 = _extract_hidden_value(upload2.text, "token")
+    confirm2 = client.post(
+        "/import/confirm",
+        data={
+            "token": token2,
+            "account_id": str(account.id),
+            "file_kind": "csv",
+            "date_column": "Date",
+            "description_column": "Description",
+            "amount_column": "Amount",
+            "balance_column": "Balance",
+        },
+    )
+    assert "Imported 0" in confirm2.text
+    assert "2 existing transactions" in confirm2.text
+
+    transactions = db_session.query(Transaction).filter(Transaction.account_id == account.id).order_by(Transaction.date).all()
+    assert len(transactions) == 2  # still just 2 — not duplicated
+    assert transactions[0].balance == 600
+    assert transactions[1].balance == -850
 
 
 def _extract_hidden_value(html: str, field_name: str) -> str:

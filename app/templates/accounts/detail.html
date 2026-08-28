@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "macros.html" import balance_caption %}
 
 {% block title %}{{ account.name }} — Finance Tracker{% endblock %}
 
@@ -12,8 +13,9 @@
 
 <div class="card-grid dashboard-summary">
   <div class="card">
-    <h2>Net</h2>
-    <p class="figure figure--big {% if net >= 0 %}figure--income{% else %}figure--expense{% endif %}">{{ net | money }}</p>
+    <h2>Balance</h2>
+    <p class="figure figure--big {% if balance.amount >= 0 %}figure--income{% else %}figure--expense{% endif %}">{{ balance.amount | money }}</p>
+    <p class="account-card__balance-source">{{ balance_caption(balance) }}</p>
   </div>
   <div class="card">
     <h2>Transactions</h2>
@@ -40,6 +42,10 @@
         {% endfor %}
       </select>
     </label>
+    <label>
+      Starting balance <span class="form-optional">(optional — only used when no imported transaction reports its own balance)</span>
+      <input type="number" step="0.01" name="starting_balance" value="{{ account.starting_balance if account.starting_balance is not none else '' }}" placeholder="e.g. 1250.00" />
+    </label>
     <button type="submit" class="btn">Save changes</button>
   </form>
 </div>
@@ -50,7 +56,7 @@
   <div class="table-scroll">
     <table class="txn-table">
       <thead>
-        <tr><th>Date</th><th>Description</th><th>Category</th><th>Amount</th></tr>
+        <tr><th>Date</th><th>Description</th><th>Category</th><th>Amount</th>{% if has_balance_data %}<th>Balance</th>{% endif %}</tr>
       </thead>
       <tbody>
         {% for t in transactions %}
@@ -59,6 +65,7 @@
           <td>{{ t.description }}</td>
           <td>{{ t.category.name if t.category else "Uncategorized" }}</td>
           <td class="figure {% if t.amount >= 0 %}figure--income{% else %}figure--expense{% endif %}">{{ t.amount | money }}</td>
+          {% if has_balance_data %}<td class="figure">{{ t.balance | money if t.balance is not none else "—" }}</td>{% endif %}
         </tr>
         {% endfor %}
       </tbody>

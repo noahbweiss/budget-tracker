@@ -218,6 +218,12 @@ a.card:hover {
   margin-bottom: 0.75rem;
 }
 
+.account-card__balance-source {
+  color: var(--ink-muted);
+  font-size: 0.75rem;
+  margin: 0.15rem 0 0;
+}
+
 .card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

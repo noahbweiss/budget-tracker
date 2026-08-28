@@ -16,9 +16,13 @@ Two formats, two very different problems:
   synthetic id needed.
 
 Both return the same row shape: {"date": date, "amount": Decimal,
-"description": str, "external_id": str}. external_id is the dedup key
-routers/import_csv.py checks against existing Transaction.external_id for
-a given account before inserting.
+"description": str, "external_id": str, "balance": Decimal | None}.
+external_id is the dedup key routers/import_csv.py checks against
+existing Transaction.external_id for a given account before inserting.
+`balance` — the account's running balance as of that row, when the CSV
+happens to report one — is optional and CSV-only; OFX has no standard
+per-transaction balance field (LEDGERBAL/AVAILBAL are statement-level,
+not per-row), so parse_ofx() always returns None for it.
 """
 import hashlib
 import re
@@ -37,6 +41,7 @@ _DESCRIPTION_HEADERS = ["description", "memo", "payee", "name"]
 _AMOUNT_HEADERS = ["transaction amount", "amount"]
 _DEBIT_HEADERS = ["debit", "withdrawal"]
 _CREDIT_HEADERS = ["credit", "deposit"]
+_BALANCE_HEADERS = ["running balance", "posted balance", "account balance", "balance"]
 
 # Tried in order; the first that parses the value is used. ISO first
 # (unambiguous), then US-style (this app makes no locale assumption
@@ -54,6 +59,7 @@ class ColumnMapping:
     amount: str | None = None
     debit: str | None = None
     credit: str | None = None
+    balance: str | None = None
 
 
 def sniff_headers(file_path: Path) -> list[str]:
@@ -77,13 +83,16 @@ def detect_mapping(headers: list[str]) -> ColumnMapping | None:
     amount_col = _find_header(by_lower, _AMOUNT_HEADERS)
     debit_col = _find_header(by_lower, _DEBIT_HEADERS)
     credit_col = _find_header(by_lower, _CREDIT_HEADERS)
+    balance_col = _find_header(by_lower, _BALANCE_HEADERS)
 
     if date_col is None or description_col is None:
         return None
     if amount_col is not None:
-        return ColumnMapping(date=date_col, description=description_col, amount=amount_col)
+        return ColumnMapping(date=date_col, description=description_col, amount=amount_col, balance=balance_col)
     if debit_col is not None and credit_col is not None:
-        return ColumnMapping(date=date_col, description=description_col, debit=debit_col, credit=credit_col)
+        return ColumnMapping(
+            date=date_col, description=description_col, debit=debit_col, credit=credit_col, balance=balance_col
+        )
     return None
 
 
@@ -120,12 +129,15 @@ def parse_csv(file_path: Path, mapping: ColumnMapping | None = None) -> list[dic
             description = (raw_row.get(mapping.description) or "").strip()
             amount = _resolve_amount(raw_row, mapping)
             external_id = _dedupe_id(_row_hash(parsed_date, amount, description), seen_ids)
+            balance_raw = raw_row.get(mapping.balance) if mapping.balance else None
+            balance = _parse_amount(balance_raw) if balance_raw and balance_raw.strip() else None
             rows.append(
                 {
                     "date": parsed_date,
                     "description": description,
                     "amount": amount,
                     "external_id": external_id,
+                    "balance": balance,
                 }
             )
         return rows
@@ -219,6 +231,8 @@ def parse_ofx(file_path: Path) -> list[dict]:
                 "external_id": fields.get("FITID") or _row_hash(
                     _parse_ofx_date(fields["DTPOSTED"]), Decimal(fields["TRNAMT"]), description
                 ),
+                # OFX has no standard per-transaction balance field.
+                "balance": None,
             }
         )
     return rows

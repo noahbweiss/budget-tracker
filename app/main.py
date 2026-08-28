@@ -9,13 +9,17 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 
-from app.database import Base, SessionLocal, engine
+from app.database import Base, SessionLocal, engine, ensure_schema_migrations
 from app.routers import accounts, dashboard, import_csv, simplefin, transactions
 from app.services.categories import ensure_default_categories
 from app.templating import templates
 
 # TODO: replace with Alembic migrations once the schema stabilizes.
 Base.metadata.create_all(bind=engine)
+
+# Stopgap for schema changes on an existing database — see
+# ensure_schema_migrations's docstring. Must run after create_all().
+ensure_schema_migrations(engine)
 
 # Idempotent — only inserts if the categories table is empty. See
 # app/services/categories.py for why this exists (no category-management

@@ -33,7 +33,7 @@ def test_create_account_blank_name_rejected(client, db_session):
     assert db_session.query(Account).count() == 0
 
 
-def test_list_accounts_shows_created_account_and_net(client, db_session):
+def test_list_accounts_shows_created_account_and_net_only_balance(client, db_session):
     client.post("/accounts/", data={"name": "Checking", "institution": "", "account_type": "checking"})
     account = db_session.query(Account).one()
 
@@ -51,7 +51,36 @@ def test_list_accounts_shows_created_account_and_net(client, db_session):
     response = client.get("/accounts/")
     assert response.status_code == 200
     assert "Checking" in response.text
-    assert "800.00" in response.text  # net = 1000 - 200
+    assert "800.00" in response.text  # net = 1000 - 200, no starting balance or reported balance
+    assert "Net of tracked transactions only" in response.text
+
+
+def test_create_account_with_starting_balance(client, db_session):
+    client.post(
+        "/accounts/",
+        data={"name": "Checking", "institution": "", "account_type": "checking", "starting_balance": "250.00"},
+    )
+    account = db_session.query(Account).one()
+    assert account.starting_balance == 250
+
+    response = client.get("/accounts/")
+    assert "250.00" in response.text
+    assert "Estimated from starting balance" in response.text
+
+
+def test_account_list_shows_reported_balance_when_transaction_has_one(client, db_session):
+    from datetime import date
+    from app.models import Transaction
+
+    account = Account(name="Checking", account_type="checking")
+    db_session.add(account)
+    db_session.flush()
+    db_session.add(Transaction(account_id=account.id, date=date(2026, 7, 1), amount=500, description="Deposit", balance=600))
+    db_session.commit()
+
+    response = client.get("/accounts/")
+    assert "600.00" in response.text
+    assert "As of 2026-07-01" in response.text
 
 
 def test_get_account_detail(client, db_session):
@@ -86,6 +115,26 @@ def test_update_account(client, db_session):
     assert account.name == "New Name"
     assert account.institution == "New Bank"
     assert account.account_type == "savings"
+
+
+def test_update_account_sets_and_clears_starting_balance(client, db_session):
+    account = Account(name="Checking", account_type="checking")
+    db_session.add(account)
+    db_session.commit()
+
+    client.post(
+        f"/accounts/{account.id}",
+        data={"name": "Checking", "institution": "", "account_type": "checking", "starting_balance": "300.00"},
+    )
+    db_session.refresh(account)
+    assert account.starting_balance == 300
+
+    client.post(
+        f"/accounts/{account.id}",
+        data={"name": "Checking", "institution": "", "account_type": "checking", "starting_balance": ""},
+    )
+    db_session.refresh(account)
+    assert account.starting_balance is None
 
 
 def test_update_account_404(client):

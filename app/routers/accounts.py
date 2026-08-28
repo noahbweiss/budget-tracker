@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Account, Transaction
+from app.services.balances import resolve_balance
 from app.templating import templates
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
@@ -33,6 +34,7 @@ class AccountCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     institution: str | None = Field(default=None, max_length=120)
     account_type: str = Field(min_length=1, max_length=50)
+    starting_balance: Decimal | None = None
 
 
 class AccountUpdate(AccountCreate):
@@ -49,9 +51,10 @@ def _account_summaries(db: Session) -> list[dict]:
     accounts = db.query(Account).order_by(Account.name).all()
     summaries = []
     for account in accounts:
-        transactions = db.query(Transaction).filter(Transaction.account_id == account.id).all()
-        net = sum((Decimal(t.amount) for t in transactions), start=Decimal("0"))
-        summaries.append({"account": account, "net": net, "transaction_count": len(transactions)})
+        transaction_count = db.query(Transaction).filter(Transaction.account_id == account.id).count()
+        summaries.append(
+            {"account": account, "balance": resolve_balance(db, account), "transaction_count": transaction_count}
+        )
     return summaries
 
 
@@ -70,10 +73,16 @@ def create_account(
     name: str = Form(...),
     institution: str = Form(""),
     account_type: str = Form(...),
+    starting_balance: str = Form(""),
     db: Session = Depends(get_db),
 ):
     try:
-        payload = AccountCreate(name=name, institution=institution or None, account_type=account_type)
+        payload = AccountCreate(
+            name=name,
+            institution=institution or None,
+            account_type=account_type,
+            starting_balance=starting_balance or None,
+        )
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=exc.errors())
 
@@ -81,6 +90,7 @@ def create_account(
         name=payload.name,
         institution=payload.institution,
         account_type=payload.account_type,
+        starting_balance=payload.starting_balance,
         source="manual",
     )
     db.add(account)
@@ -100,11 +110,11 @@ def get_account(request: Request, account_id: int, db: Session = Depends(get_db)
         .order_by(Transaction.date.desc(), Transaction.id.desc())
         .all()
     )
-    net = sum((Decimal(t.amount) for t in transactions), start=Decimal("0"))
     context = {
         "account": account,
         "transactions": transactions,
-        "net": net,
+        "has_balance_data": any(t.balance is not None for t in transactions),
+        "balance": resolve_balance(db, account),
         "account_types": _account_type_options(account.account_type),
         "active_nav": "accounts",
     }
@@ -117,6 +127,7 @@ def update_account(
     name: str = Form(...),
     institution: str = Form(""),
     account_type: str = Form(...),
+    starting_balance: str = Form(""),
     db: Session = Depends(get_db),
 ):
     account = db.get(Account, account_id)
@@ -124,12 +135,18 @@ def update_account(
         raise HTTPException(status_code=404, detail=f"account {account_id} not found")
 
     try:
-        payload = AccountUpdate(name=name, institution=institution or None, account_type=account_type)
+        payload = AccountUpdate(
+            name=name,
+            institution=institution or None,
+            account_type=account_type,
+            starting_balance=starting_balance or None,
+        )
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=exc.errors())
 
     account.name = payload.name
     account.institution = payload.institution
     account.account_type = payload.account_type
+    account.starting_balance = payload.starting_balance
     db.commit()
     return RedirectResponse(url=f"/accounts/{account_id}", status_code=303)

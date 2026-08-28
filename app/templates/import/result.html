@@ -8,6 +8,9 @@
   <p>
     Imported {{ imported }} transaction{{ "" if imported == 1 else "s" }} into <strong>{{ account.name }}</strong>,
     skipped {{ skipped }} duplicate{{ "" if skipped == 1 else "s" }} already in your ledger.
+    {% if backfilled %}
+    Also filled in the balance on {{ backfilled }} existing transaction{{ "" if backfilled == 1 else "s" }} that didn't have one yet.
+    {% endif %}
   </p>
   <div class="action-row">
     <a class="btn" href="/transactions/">View transactions</a>

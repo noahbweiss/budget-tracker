@@ -46,6 +46,16 @@ def test_returns_none_when_amount_columns_missing():
     assert csv_importer.detect_mapping(["Date", "Description"]) is None
 
 
+def test_detects_optional_balance_column():
+    mapping = csv_importer.detect_mapping(["Date", "Description", "Amount", "Running Balance"])
+    assert mapping == ColumnMapping(date="Date", description="Description", amount="Amount", balance="Running Balance")
+
+
+def test_balance_is_none_when_no_balance_column_present():
+    mapping = csv_importer.detect_mapping(["Date", "Description", "Amount"])
+    assert mapping.balance is None
+
+
 # ---- parse_csv: single amount column ----
 
 
@@ -121,6 +131,45 @@ def test_parse_csv_raises_when_no_mapping_detected_or_given(tmp_path):
     path = write_csv(tmp_path, "statement.csv", "Col A,Col B\nx,y\n")
     with pytest.raises(ValueError):
         csv_importer.parse_csv(path)
+
+
+# ---- parse_csv: optional balance column ----
+
+
+def test_parse_csv_captures_balance_when_mapped(tmp_path):
+    path = write_csv(
+        tmp_path,
+        "statement.csv",
+        "Date,Description,Amount,Balance\n2026-07-01,Deposit,500.00,600.00\n",
+    )
+    rows = csv_importer.parse_csv(path)
+    assert rows[0]["balance"] == Decimal("600.00")
+
+
+def test_parse_csv_balance_is_none_when_not_mapped(tmp_path):
+    path = write_csv(tmp_path, "statement.csv", "Date,Description,Amount\n2026-07-01,Deposit,500.00\n")
+    rows = csv_importer.parse_csv(path)
+    assert rows[0]["balance"] is None
+
+
+def test_parse_csv_balance_is_none_when_cell_is_blank(tmp_path):
+    path = write_csv(
+        tmp_path,
+        "statement.csv",
+        "Date,Description,Amount,Balance\n2026-07-01,Deposit,500.00,\n",
+    )
+    rows = csv_importer.parse_csv(path)
+    assert rows[0]["balance"] is None
+
+
+def test_parse_csv_balance_handles_dollar_signs_and_commas(tmp_path):
+    path = write_csv(
+        tmp_path,
+        "statement.csv",
+        "Date,Description,Amount,Balance\n2026-07-01,Deposit,500.00,\"$1,600.00\"\n",
+    )
+    rows = csv_importer.parse_csv(path)
+    assert rows[0]["balance"] == Decimal("1600.00")
 
 
 # ---- external_id: stable + disambiguated within a file ----

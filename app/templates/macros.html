@@ -1,0 +1,11 @@
+{# Shared across accounts/_list.html and accounts/detail.html — keeps the
+   balance-source caption wording in one place instead of duplicated. #}
+{% macro balance_caption(balance) -%}
+{%- if balance.source == "reported" -%}
+As of {{ balance.as_of }}
+{%- elif balance.source == "estimated" -%}
+Estimated from starting balance
+{%- else -%}
+Net of tracked transactions only — no starting balance set
+{%- endif -%}
+{%- endmacro %}

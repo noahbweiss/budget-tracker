@@ -4,6 +4,7 @@ TODO: revisit fields once import/sync flows are implemented (e.g. dedup
 keys for transactions coming from SimpleFin vs CSV import).
 """
 from datetime import date, datetime
+from decimal import Decimal
 
 from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -21,6 +22,10 @@ class Account(Base):
     # "manual" (CSV import) or "simplefin"
     source: Mapped[str] = mapped_column(String(20), default="manual")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    # Optional user-entered baseline, used as a fallback when no imported
+    # transaction carries its own bank-reported `balance` — see
+    # app/services/balances.py for how these combine.
+    starting_balance: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
 
     transactions: Mapped[list["Transaction"]] = relationship(back_populates="account")
 
@@ -51,6 +56,14 @@ class Transaction(Base):
 
     # Helps avoid duplicate imports across CSV re-imports / SimpleFin syncs.
     external_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # The account's running balance as of this transaction, when the
+    # source (a bank's CSV export, sometimes OFX/SimpleFin) actually
+    # reports one. Nullable — most imports won't have this. When present,
+    # it's authoritative for "what's my balance" (see
+    # app/services/balances.py) since it's the bank's own number, not a
+    # sum we computed that has no idea what existed before tracking began.
+    balance: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
 
     account: Mapped["Account"] = relationship(back_populates="transactions")
     category: Mapped["Category | None"] = relationship(back_populates="transactions")

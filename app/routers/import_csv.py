@@ -43,13 +43,28 @@ def _temp_path(token: str, file_kind: str) -> Path:
     return IMPORT_TMP_DIR / f"{token}.{suffix}"
 
 
-def _mapping_from_form(date_column: str, description_column: str, amount_column: str, debit_column: str, credit_column: str) -> ColumnMapping | None:
+def _mapping_from_form(
+    date_column: str,
+    description_column: str,
+    amount_column: str,
+    debit_column: str,
+    credit_column: str,
+    balance_column: str = "",
+) -> ColumnMapping | None:
     if not date_column or not description_column:
         return None
     if amount_column:
-        return ColumnMapping(date=date_column, description=description_column, amount=amount_column)
+        return ColumnMapping(
+            date=date_column, description=description_column, amount=amount_column, balance=balance_column or None
+        )
     if debit_column and credit_column:
-        return ColumnMapping(date=date_column, description=description_column, debit=debit_column, credit=credit_column)
+        return ColumnMapping(
+            date=date_column,
+            description=description_column,
+            debit=debit_column,
+            credit=credit_column,
+            balance=balance_column or None,
+        )
     return None
 
 
@@ -104,6 +119,7 @@ def preview(
     amount_column: str = Form(""),
     debit_column: str = Form(""),
     credit_column: str = Form(""),
+    balance_column: str = Form(""),
     db: Session = Depends(get_db),
 ):
     account = db.get(Account, account_id)
@@ -111,7 +127,7 @@ def preview(
     if account is None or not path.exists():
         raise HTTPException(status_code=404, detail="import session not found or expired")
 
-    mapping = _mapping_from_form(date_column, description_column, amount_column, debit_column, credit_column)
+    mapping = _mapping_from_form(date_column, description_column, amount_column, debit_column, credit_column, balance_column)
     headers = csv_importer.sniff_headers(path) if file_kind == "csv" else []
 
     context = _preview_context(path, file_kind, mapping, headers, account, token)
@@ -152,6 +168,7 @@ def confirm(
     amount_column: str = Form(""),
     debit_column: str = Form(""),
     credit_column: str = Form(""),
+    balance_column: str = Form(""),
     db: Session = Depends(get_db),
 ):
     account = db.get(Account, account_id)
@@ -159,31 +176,43 @@ def confirm(
     if account is None or not path.exists():
         raise HTTPException(status_code=404, detail="import session not found or expired")
 
-    mapping = _mapping_from_form(date_column, description_column, amount_column, debit_column, credit_column)
+    mapping = _mapping_from_form(date_column, description_column, amount_column, debit_column, credit_column, balance_column)
     rows = _parse_rows(path, file_kind, mapping)
 
-    existing_ids = {
-        t.external_id
-        for t in db.query(Transaction.external_id).filter(Transaction.account_id == account.id).all()
-        if t.external_id
+    # Keyed by external_id so a duplicate row can be matched back to the
+    # actual existing Transaction — not just checked for existence — to
+    # support balance backfill below.
+    existing_by_id = {
+        t.external_id: t
+        for t in db.query(Transaction).filter(Transaction.account_id == account.id, Transaction.external_id.isnot(None)).all()
     }
 
     imported = 0
     skipped = 0
+    backfilled = 0
     for row in rows:
-        if row["external_id"] in existing_ids:
-            skipped += 1
+        existing = existing_by_id.get(row["external_id"])
+        if existing is not None:
+            # Re-uploading a file with a balance column now mapped, for
+            # transactions imported before that mapping existed: fill in
+            # what was missing rather than just skipping the row outright.
+            if row["balance"] is not None and existing.balance is None:
+                existing.balance = row["balance"]
+                backfilled += 1
+            else:
+                skipped += 1
             continue
-        db.add(
-            Transaction(
-                account_id=account.id,
-                date=row["date"],
-                amount=row["amount"],
-                description=row["description"],
-                external_id=row["external_id"],
-            )
+
+        new_txn = Transaction(
+            account_id=account.id,
+            date=row["date"],
+            amount=row["amount"],
+            description=row["description"],
+            external_id=row["external_id"],
+            balance=row["balance"],
         )
-        existing_ids.add(row["external_id"])
+        db.add(new_txn)
+        existing_by_id[row["external_id"]] = new_txn  # guards against a dup within this same file
         imported += 1
     db.commit()
 
@@ -191,6 +220,7 @@ def confirm(
 
     context = {
         "account": account,
+        "backfilled": backfilled,
         "imported": imported,
         "skipped": skipped,
         "active_nav": "import",

@@ -1,3 +1,4 @@
+{% from "macros.html" import balance_caption %}
 {% if accounts %}
 <div class="card-grid">
   {% for row in accounts %}
@@ -6,9 +7,10 @@
     <p class="account-card__meta">
       {{ row.account.institution or "No institution" }} · {{ row.account.account_type | capitalize }}
     </p>
-    <p class="figure figure--big {% if row.net >= 0 %}figure--income{% else %}figure--expense{% endif %}">
-      {{ row.net | money }}
+    <p class="figure figure--big {% if row.balance.amount >= 0 %}figure--income{% else %}figure--expense{% endif %}">
+      {{ row.balance.amount | money }}
     </p>
+    <p class="account-card__balance-source">{{ balance_caption(row.balance) }}</p>
     <span class="pill">{{ row.transaction_count }} transaction{{ "" if row.transaction_count == 1 else "s" }}</span>
     {% if row.account.source == "simplefin" %}<span class="pill">Synced</span>{% endif %}
   </a>
