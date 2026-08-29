@@ -166,9 +166,14 @@ p {
   max-width: var(--content-width);
   margin: 0 auto;
   padding: 0.9rem 1.5rem;
-  display: flex;
+  display: grid;
+  /* Two equal 1fr side columns (wordmark, settings button) keep the
+     auto-width nav column truly centered on the header regardless of
+     how wide either side's content is — flex space-between only
+     centers a middle element when both sides happen to be equal width,
+     which they aren't here. */
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: space-between;
   gap: 1rem;
 }
 
@@ -208,6 +213,31 @@ p {
 .nav a.active {
   color: var(--ink);
   border-bottom-color: var(--accent);
+}
+
+/* Placeholder — no real settings page behind this yet, just a stub
+   (see routers/settings.py) so the icon isn't a dead link. Text-glyph
+   icon, matching the wordmark's "＄" — no icon asset to keep track of. */
+.settings-btn {
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--bg-elevated);
+  color: var(--ink-muted);
+  text-decoration: none;
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+.settings-btn:hover,
+.settings-btn.active {
+  color: var(--ink);
+  border-color: var(--accent);
 }
 
 /* ---- Layout ---- */
@@ -261,6 +291,20 @@ a.card:hover {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 1rem;
+}
+
+/* .card + .card's margin-top (above) is meant for cards stacked in plain
+   block flow (e.g. the account detail page's Balance/Transactions
+   cards) — but since it's just an adjacent-sibling selector, it also
+   fires on every card-grid, whose children are laid out side-by-side,
+   not stacked. Grid's default align-items: stretch then makes the
+   unmargined first card visibly taller than its siblings (their box
+   starts lower, thanks to the margin, but grid still stretches every
+   item to the same row height, so they end at the same bottom edge
+   with less box height overall). The grid's own `gap` already spaces
+   items correctly, so cancel the margin entirely here. */
+.card-grid > .card + .card {
+  margin-top: 0;
 }
 
 /* ---- Buttons / pills ---- */

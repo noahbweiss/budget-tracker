@@ -10,7 +10,7 @@ from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 
 from app.database import Base, SessionLocal, engine, ensure_schema_migrations
-from app.routers import accounts, dashboard, import_csv, plan, simplefin, transactions
+from app.routers import accounts, dashboard, import_csv, plan, settings, simplefin, transactions
 from app.services.categories import ensure_default_categories
 from app.templating import templates
 
@@ -40,6 +40,7 @@ app.include_router(plan.router)
 app.include_router(transactions.router)
 app.include_router(import_csv.router)
 app.include_router(simplefin.router)
+app.include_router(settings.router)
 
 
 @app.get("/")

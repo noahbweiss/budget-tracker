@@ -79,6 +79,7 @@ Rationale: keeps "clone and run" trivial for forkers (no `npm install`/build pip
 - Color used sparingly and meaningfully: green/red reserved for income/expense signal (matching the model's signed-amount convention), not used decoratively elsewhere. Distinguishing many small categories (the category-breakdown donut) uses a separate categorical palette (`--cat-0`..`--cat-7` in `style.css`, light + dark variants) — deliberately different hues from income/expense/accent, cycled by index, not tied to any specific category.
 - HTMX handles the interactive bits (range switching, live-updating fragments) — server returns rendered HTML fragments, not JSON, to HTMX-triggered requests. (`dashboard.py`'s own TODO already anticipates this: "return an HTMX-rendered template fragment instead of raw JSON.")
 
+**When writing CSS careful of selector specificities. It's easy to generate CSS classes that cancel each other out (established from a real bug, UI pass 1 round 2):** `.card + .card { margin-top: 1rem }` was written assuming cards always stack vertically in plain block flow (true when it was added) — but `.card-grid`'s children are laid out side-by-side, and the sibling-combinator selector fires there too, since it only checks DOM order, not visual layout. Combined with grid's default `align-items: stretch`, this made the first card in every `.card-grid` render visibly taller than its siblings. Any new `.card`-based layout should assume this rule applies unless explicitly canceled (`.card-grid > .card + .card { margin-top: 0; }` already does this for grids) — check for stacking-context-specific rules like this one before reusing a class in a new layout context.
 ## Known gaps
 
 Resolved in Phase 0 (2026-08-27): git repo initialized, `.gitignore` added, `.env`/`.env.example` added (README's Docker instructions now include `cp .env.example .env`), `dashboard.py` returns a proper 400 via `HTTPException` for an invalid `range_type`.
@@ -95,11 +96,14 @@ Resolved post-Phase-5 (2026-08-29, real usage feedback): SimpleFin no longer sil
 
 Resolved in UI pass 1 (2026-08-29, from a Figma wireframe): dashboard renamed "Overview," gained an account-filter sidebar (dashboard-only — see `routers/dashboard.py`'s docstring for why not global), category breakdown is now a donut chart + legend instead of a horizontal-bar list, and a `/plan/` nav stub exists (real page, no logic yet).
 
+Resolved in UI pass 1, round 2 (2026-08-29, itemized real-usage feedback): every `.card-grid` had a first-item-looks-bigger bug (see the "grid children never stack" convention below); the top nav is now centered via a real 3-column grid, not an approximation; a `/settings/` icon stub exists top-right (same "shape stub" pattern as `/plan/`).
+
 Still open:
 - Account delete isn't implemented standalone (hard-delete-vs-archive is a real decision, deferred until needed) — merging (which does delete the absorbed account) is safe because everything is preserved by moving it first; a standalone "just delete this account" action still needs that policy decision.
 - No way to manually create a single transaction — by design, transactions arrive via import or sync.
 - No category-management UI — categories come from a fixed default set (`app/services/categories.py`).
 - No budget-planning logic behind the `/plan/` page yet — it's a nav stub, not a feature; what it should actually do (per-category targets? monthly budget vs. actual?) hasn't been scoped.
+- `/settings/` is a nav stub too — nothing to configure yet, and what it should hold (theme override? default dashboard range? SimpleFin connection management?) hasn't been scoped either.
 - Accounts-page UI issues flagged by real usage, not yet itemized — waiting on specifics before the next UI-polish pass.
 - OFX parsing is a pragmatic regex extractor for the standard single-account `<STMTTRN>` structure, not a full SGML/XML parser — see `csv_importer.py`'s `parse_ofx` docstring for what it doesn't handle.
 - No background/scheduled SimpleFin sync (manual "Sync now" only) and no multi-bridge "Connect another bank" UI (the data model supports it, the UI doesn't yet).
