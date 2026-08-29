@@ -7,10 +7,23 @@ just hand it a response dict shaped like the real API's.
 Accounts are matched across syncs by (simplefin_connection_id,
 simplefin_account_id) — SimpleFin's own account id — so re-syncing
 updates the same local Account instead of creating a new one every time.
-Once created, a resync never overwrites name/institution/account_type:
-those are left alone in case the user edited them locally. Balance is
-always refreshed, since SimpleFin's balance is meant to reflect "right
-now" on every sync.
+Once created/linked, a resync never overwrites name/institution/
+account_type: those are left alone in case the user edited them locally.
+Balance is always refreshed, since SimpleFin's balance is meant to
+reflect "right now" on every sync.
+
+**A remote account with no local match is never auto-created.** Real
+usage surfaced why: connecting SimpleFin for an account you'd already
+CSV-imported silently created a second, separate local Account for the
+same real-world card — the two then showed different partial data and
+different balances, with no link between them (see app/services/
+account_merge.py, built to clean up exactly that after the fact). The
+fix here is upstream of that: `partition_response()` splits a sync into
+accounts that already match something locally (synced immediately, no
+interruption — see `sync_matched_accounts()`) and accounts with no match
+yet, which the router routes to a review step instead
+(`create_new_account()` or `link_to_existing_account()`, depending on
+what the user picks there).
 """
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -38,24 +51,58 @@ _TYPE_HINTS = [
 
 @dataclass
 class SyncResult:
-    accounts_created: int = 0
     accounts_updated: int = 0
     transactions_imported: int = 0
     transactions_skipped: int = 0
     errors: list[str] = field(default_factory=list)
 
 
-def apply_sync_response(db: Session, connection: SimplefinConnection, response: dict) -> SyncResult:
-    result = SyncResult(errors=list(response.get("errors") or []))
-
+def partition_response(
+    db: Session, connection: SimplefinConnection, response: dict
+) -> tuple[list[dict], list[dict]]:
+    """Splits response["accounts"] into (matched, new): `matched` entries
+    already correspond to a local Account (by simplefin_account_id under
+    this connection); `new` entries don't yet and need a human decision
+    (routers/simplefin.py's "new accounts found" review step) before
+    anything is created.
+    """
+    matched = []
+    new = []
     for remote_account in response.get("accounts", []):
-        account, created = _upsert_account(db, connection, remote_account)
-        if created:
-            result.accounts_created += 1
-        else:
-            result.accounts_updated += 1
+        exists = (
+            db.query(Account.id)
+            .filter(
+                Account.simplefin_connection_id == connection.id,
+                Account.simplefin_account_id == remote_account["id"],
+            )
+            .first()
+            is not None
+        )
+        (matched if exists else new).append(remote_account)
+    return matched, new
 
+
+def sync_matched_accounts(
+    db: Session, connection: SimplefinConnection, matched_remote_accounts: list[dict]
+) -> SyncResult:
+    """Refreshes balance + pulls new transactions for remote accounts that
+    already have a local match. Never creates an Account — see this
+    module's docstring for why that's routed through a review step
+    instead.
+    """
+    result = SyncResult(errors=[])
+    for remote_account in matched_remote_accounts:
+        account = (
+            db.query(Account)
+            .filter(
+                Account.simplefin_connection_id == connection.id,
+                Account.simplefin_account_id == remote_account["id"],
+            )
+            .one()
+        )
+        _update_reported_balance(account, remote_account)
         imported, skipped = _sync_transactions(db, account, remote_account.get("transactions") or [])
+        result.accounts_updated += 1
         result.transactions_imported += imported
         result.transactions_skipped += skipped
 
@@ -64,35 +111,55 @@ def apply_sync_response(db: Session, connection: SimplefinConnection, response: 
     return result
 
 
-def _upsert_account(db: Session, connection: SimplefinConnection, remote_account: dict) -> tuple[Account, bool]:
-    remote_id = remote_account["id"]
-    account = (
-        db.query(Account)
-        .filter(Account.simplefin_connection_id == connection.id, Account.simplefin_account_id == remote_id)
-        .first()
+def create_new_account(db: Session, connection: SimplefinConnection, remote_account: dict) -> Account:
+    """Creates a fresh local Account for a remote account the user chose
+    "create new" for during the "new accounts found" review step, and
+    syncs its balance + transactions into it.
+    """
+    org = remote_account.get("org") or {}
+    name = remote_account.get("name") or remote_account["id"]
+    account = Account(
+        name=name,
+        institution=org.get("name"),
+        account_type=_guess_account_type(name),
+        source="simplefin",
+        simplefin_connection_id=connection.id,
+        simplefin_account_id=remote_account["id"],
     )
-    created = account is None
-    if account is None:
-        org = remote_account.get("org") or {}
-        name = remote_account.get("name") or remote_id
-        account = Account(
-            name=name,
-            institution=org.get("name"),
-            account_type=_guess_account_type(name),
-            source="simplefin",
-            simplefin_connection_id=connection.id,
-            simplefin_account_id=remote_id,
-        )
-        db.add(account)
-        db.flush()  # so account.id exists for the transactions below
+    db.add(account)
+    db.flush()
 
-    if remote_account.get("balance") is not None:
-        account.reported_balance = Decimal(remote_account["balance"])
-        balance_date = remote_account.get("balance-date")
-        if balance_date is not None:
-            account.reported_balance_as_of = datetime.fromtimestamp(balance_date, tz=timezone.utc).date()
+    _update_reported_balance(account, remote_account)
+    _sync_transactions(db, account, remote_account.get("transactions") or [])
+    db.commit()
+    return account
 
-    return account, created
+
+def link_to_existing_account(
+    db: Session, connection: SimplefinConnection, remote_account: dict, account_id: int
+) -> Account:
+    """Attaches a remote SimpleFin account to an EXISTING local Account —
+    the user chose "link to existing" during the review step, presumably
+    because they'd already CSV-imported this same real-world account —
+    instead of creating a new one, then syncs into it.
+    """
+    account = db.get(Account, account_id)
+    account.simplefin_connection_id = connection.id
+    account.simplefin_account_id = remote_account["id"]
+
+    _update_reported_balance(account, remote_account)
+    _sync_transactions(db, account, remote_account.get("transactions") or [])
+    db.commit()
+    return account
+
+
+def _update_reported_balance(account: Account, remote_account: dict) -> None:
+    if remote_account.get("balance") is None:
+        return
+    account.reported_balance = Decimal(remote_account["balance"])
+    balance_date = remote_account.get("balance-date")
+    if balance_date is not None:
+        account.reported_balance_as_of = datetime.fromtimestamp(balance_date, tz=timezone.utc).date()
 
 
 def _guess_account_type(name: str) -> str:

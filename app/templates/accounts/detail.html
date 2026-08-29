@@ -8,7 +8,7 @@
 <h1>{{ account.name }}</h1>
 <p class="account-card__meta">
   {{ account.institution or "No institution" }} · {{ account.account_type | capitalize }}
-  {% if account.source == "simplefin" %}· <span class="pill">Synced</span>{% endif %}
+  {% if account.simplefin_account_id is not none %}· <span class="pill">Synced</span>{% endif %}
 </p>
 
 <div class="card-grid dashboard-summary">

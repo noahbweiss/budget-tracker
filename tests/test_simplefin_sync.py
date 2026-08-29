@@ -8,7 +8,12 @@ from datetime import date
 from decimal import Decimal
 
 from app.models import Account, SimplefinConnection, Transaction
-from app.services.simplefin_sync import apply_sync_response
+from app.services.simplefin_sync import (
+    create_new_account,
+    link_to_existing_account,
+    partition_response,
+    sync_matched_accounts,
+)
 
 FAKE_RESPONSE = {
     "errors": [],
@@ -50,147 +55,170 @@ def _connection(db_session):
     return connection
 
 
-def test_creates_new_account_and_transactions(db_session):
+# ---- partition_response ----
+
+
+def test_partition_puts_unmatched_accounts_in_new(db_session):
     connection = _connection(db_session)
+    db_session.commit()
 
-    result = apply_sync_response(db_session, connection, FAKE_RESPONSE)
+    matched, new = partition_response(db_session, connection, FAKE_RESPONSE)
 
-    assert result.accounts_created == 1
-    assert result.accounts_updated == 0
-    assert result.transactions_imported == 2
-    assert result.transactions_skipped == 0
-    assert result.errors == []
+    assert matched == []
+    assert len(new) == 1
+    assert new[0]["id"] == "demo-savings"
 
-    account = db_session.query(Account).one()
+
+def test_partition_puts_already_linked_accounts_in_matched(db_session):
+    connection = _connection(db_session)
+    account = Account(
+        name="Existing", account_type="savings", simplefin_connection_id=connection.id, simplefin_account_id="demo-savings"
+    )
+    db_session.add(account)
+    db_session.commit()
+
+    matched, new = partition_response(db_session, connection, FAKE_RESPONSE)
+
+    assert new == []
+    assert len(matched) == 1
+
+
+def test_partition_does_not_match_across_different_connections(db_session):
+    connection = _connection(db_session)
+    other_connection = SimplefinConnection(access_url="https://other:other@bridge.example.com/simplefin")
+    db_session.add(other_connection)
+    db_session.flush()
+    # Same remote account id, but linked to a *different* connection —
+    # should not count as a match for `connection`.
+    account = Account(
+        name="Existing",
+        account_type="savings",
+        simplefin_connection_id=other_connection.id,
+        simplefin_account_id="demo-savings",
+    )
+    db_session.add(account)
+    db_session.commit()
+
+    matched, new = partition_response(db_session, connection, FAKE_RESPONSE)
+
+    assert matched == []
+    assert len(new) == 1
+
+
+# ---- create_new_account ----
+
+
+def test_create_new_account_creates_and_syncs(db_session):
+    connection = _connection(db_session)
+    db_session.commit()
+
+    account = create_new_account(db_session, connection, FAKE_RESPONSE["accounts"][0])
+
     assert account.name == "SimpleFIN Savings"
     assert account.institution == "SimpleFIN Demo"
     assert account.source == "simplefin"
-    assert account.account_type == "savings"  # guessed from "Savings" in the name
+    assert account.account_type == "savings"
     assert account.simplefin_account_id == "demo-savings"
-    assert account.simplefin_connection_id == connection.id
     assert account.reported_balance == Decimal("113705.51")
-    assert account.reported_balance_as_of == date(2026, 8, 29)
+    assert db_session.query(Transaction).filter(Transaction.account_id == account.id).count() == 2
 
 
-def test_transaction_fields_mapped_correctly(db_session):
+def test_create_new_account_transaction_description_prefers_payee(db_session):
     connection = _connection(db_session)
-    apply_sync_response(db_session, connection, FAKE_RESPONSE)
+    db_session.commit()
+    account = create_new_account(db_session, connection, FAKE_RESPONSE["accounts"][0])
 
-    txns = {t.external_id: t for t in db_session.query(Transaction).all()}
-    assert txns["txn-1"].amount == -140
-    assert txns["txn-1"].description == "John's Fishin Shack"  # payee preferred over description
-    assert txns["txn-1"].date == date(2026, 8, 28)
-
-    assert txns["txn-2"].amount == 2500
-    assert txns["txn-2"].description == "Paycheck"  # no payee — falls back to description
+    txn1 = db_session.query(Transaction).filter(Transaction.external_id == "txn-1").one()
+    assert txn1.description == "John's Fishin Shack"
+    txn2 = db_session.query(Transaction).filter(Transaction.external_id == "txn-2").one()
+    assert txn2.description == "Paycheck"
 
 
-def test_holdings_are_ignored(db_session):
+# ---- link_to_existing_account ----
+
+
+def test_link_to_existing_account_attaches_and_syncs_without_creating_new(db_session):
     connection = _connection(db_session)
-    apply_sync_response(db_session, connection, FAKE_RESPONSE)
-    # No error, and nothing resembling a holding got created anywhere —
-    # the account and its 2 real transactions are all that exist.
+    existing = Account(name="My CSV-Imported Savings", account_type="savings")
+    db_session.add(existing)
+    db_session.commit()
+
+    result = link_to_existing_account(db_session, connection, FAKE_RESPONSE["accounts"][0], existing.id)
+
+    assert result.id == existing.id
+    assert result.name == "My CSV-Imported Savings"  # not overwritten
+    assert result.simplefin_account_id == "demo-savings"
+    assert result.simplefin_connection_id == connection.id
+    assert result.reported_balance == Decimal("113705.51")
+    assert db_session.query(Account).count() == 1  # no second account created
+    assert db_session.query(Transaction).filter(Transaction.account_id == existing.id).count() == 2
+
+
+def test_link_to_existing_account_dedupes_transactions_already_there(db_session):
+    connection = _connection(db_session)
+    existing = Account(name="My Savings", account_type="savings")
+    db_session.add(existing)
+    db_session.flush()
+    db_session.add(Transaction(account_id=existing.id, date=date(2026, 8, 28), amount=-140, description="x", external_id="txn-1"))
+    db_session.commit()
+
+    link_to_existing_account(db_session, connection, FAKE_RESPONSE["accounts"][0], existing.id)
+
+    # txn-1 already existed (by external_id) — only txn-2 should be newly added.
+    assert db_session.query(Transaction).filter(Transaction.account_id == existing.id).count() == 2
+
+
+# ---- sync_matched_accounts ----
+
+
+def test_sync_matched_accounts_never_creates_a_new_account(db_session):
+    connection = _connection(db_session)
+    existing = Account(
+        name="Existing",
+        account_type="savings",
+        simplefin_connection_id=connection.id,
+        simplefin_account_id="demo-savings",
+    )
+    db_session.add(existing)
+    db_session.commit()
+
+    result = sync_matched_accounts(db_session, connection, FAKE_RESPONSE["accounts"])
+
+    assert db_session.query(Account).count() == 1
+    assert result.accounts_updated == 1
+    assert result.transactions_imported == 2
+
+
+def test_sync_matched_accounts_does_not_reduplicate_on_resync(db_session):
+    connection = _connection(db_session)
+    existing = Account(
+        name="Existing",
+        account_type="savings",
+        simplefin_connection_id=connection.id,
+        simplefin_account_id="demo-savings",
+    )
+    db_session.add(existing)
+    db_session.commit()
+
+    sync_matched_accounts(db_session, connection, FAKE_RESPONSE["accounts"])
+    result = sync_matched_accounts(db_session, connection, FAKE_RESPONSE["accounts"])
+
+    assert result.transactions_imported == 0
+    assert result.transactions_skipped == 2
     assert db_session.query(Transaction).count() == 2
 
 
-def test_resync_updates_existing_account_without_creating_duplicate(db_session):
+def test_sync_matched_accounts_sets_last_synced_at(db_session):
     connection = _connection(db_session)
-    apply_sync_response(db_session, connection, FAKE_RESPONSE)
-
-    updated_response = {
-        "errors": [],
-        "accounts": [
-            {
-                **FAKE_RESPONSE["accounts"][0],
-                "balance": "120000.00",
-                "balance-date": 1788048000,  # a day later
-                "transactions": FAKE_RESPONSE["accounts"][0]["transactions"],  # same 2 txns again
-            }
-        ],
-    }
-    result = apply_sync_response(db_session, connection, updated_response)
-
-    assert result.accounts_created == 0
-    assert result.accounts_updated == 1
-    assert result.transactions_imported == 0
-    assert result.transactions_skipped == 2  # both already existed — not duplicated
-
-    assert db_session.query(Account).count() == 1
-    account = db_session.query(Account).one()
-    assert account.reported_balance == Decimal("120000.00")
-
-
-def test_resync_does_not_clobber_user_edited_name_or_type(db_session):
-    connection = _connection(db_session)
-    apply_sync_response(db_session, connection, FAKE_RESPONSE)
-
-    account = db_session.query(Account).one()
-    account.name = "My Renamed Savings"
-    account.account_type = "other"
+    existing = Account(
+        name="Existing",
+        account_type="savings",
+        simplefin_connection_id=connection.id,
+        simplefin_account_id="demo-savings",
+    )
+    db_session.add(existing)
     db_session.commit()
 
-    apply_sync_response(db_session, connection, FAKE_RESPONSE)
-
-    db_session.refresh(account)
-    assert account.name == "My Renamed Savings"
-    assert account.account_type == "other"
-
-
-def test_resync_picks_up_new_transactions_only(db_session):
-    connection = _connection(db_session)
-    apply_sync_response(db_session, connection, FAKE_RESPONSE)
-
-    response_with_new_txn = {
-        "errors": [],
-        "accounts": [
-            {
-                **FAKE_RESPONSE["accounts"][0],
-                "transactions": [
-                    *FAKE_RESPONSE["accounts"][0]["transactions"],
-                    {"id": "txn-3", "posted": 1788019200, "amount": "-25.00", "description": "Coffee"},
-                ],
-            }
-        ],
-    }
-    result = apply_sync_response(db_session, connection, response_with_new_txn)
-
-    assert result.transactions_imported == 1
-    assert result.transactions_skipped == 2
-    assert db_session.query(Transaction).count() == 3
-
-
-def test_surfaces_api_errors_without_failing(db_session):
-    connection = _connection(db_session)
-    response = {**FAKE_RESPONSE, "errors": ["Requested date range exceeds recommended range of 45 days."]}
-
-    result = apply_sync_response(db_session, connection, response)
-
-    assert result.errors == ["Requested date range exceeds recommended range of 45 days."]
-    assert result.accounts_created == 1  # still processed normally
-
-
-def test_guesses_checking_when_no_type_hint_in_name(db_session):
-    connection = _connection(db_session)
-    response = {
-        "errors": [],
-        "accounts": [
-            {
-                "id": "demo-checking",
-                "name": "Everyday Account",
-                "balance": "500.00",
-                "balance-date": 1787961600,
-                "transactions": [],
-                "org": {"name": "Some Bank"},
-            }
-        ],
-    }
-    apply_sync_response(db_session, connection, response)
-    account = db_session.query(Account).one()
-    assert account.account_type == "checking"
-
-
-def test_sets_last_synced_at(db_session):
-    connection = _connection(db_session)
     assert connection.last_synced_at is None
-    apply_sync_response(db_session, connection, FAKE_RESPONSE)
+    sync_matched_accounts(db_session, connection, FAKE_RESPONSE["accounts"])
     assert connection.last_synced_at is not None

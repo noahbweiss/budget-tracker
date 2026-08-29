@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Account, Transaction
+from app.services.account_merge import execute_merge, find_duplicate_candidates
 from app.services.balances import resolve_balance
 from app.templating import templates
 
@@ -96,6 +97,60 @@ def create_account(
     db.add(account)
     db.commit()
     return RedirectResponse(url="/accounts/", status_code=303)
+
+
+@router.get("/merge")
+def merge_form(request: Request, db: Session = Depends(get_db)):
+    # Declared before /{account_id} so "merge" is never treated as an
+    # account id path param — route order matters here.
+    accounts = db.query(Account).order_by(Account.name).all()
+    context = {"accounts": accounts, "active_nav": "accounts"}
+    return templates.TemplateResponse(request, "accounts/merge.html", context)
+
+
+@router.post("/merge/preview")
+def merge_preview(
+    request: Request,
+    source_account_id: int = Form(...),
+    target_account_id: int = Form(...),
+    db: Session = Depends(get_db),
+):
+    if source_account_id == target_account_id:
+        raise HTTPException(status_code=400, detail="pick two different accounts to merge")
+
+    source = db.get(Account, source_account_id)
+    target = db.get(Account, target_account_id)
+    if source is None or target is None:
+        raise HTTPException(status_code=404, detail="account not found")
+
+    pairs, unmatched = find_duplicate_candidates(db, source_account_id, target_account_id)
+    context = {
+        "source": source,
+        "target": target,
+        "pairs": pairs,
+        "unmatched": unmatched,
+        "active_nav": "accounts",
+    }
+    return templates.TemplateResponse(request, "accounts/merge_preview.html", context)
+
+
+@router.post("/merge/confirm")
+def merge_confirm(
+    source_account_id: int = Form(...),
+    target_account_id: int = Form(...),
+    discard_transaction_ids: list[int] = Form([]),
+    db: Session = Depends(get_db),
+):
+    if db.get(Account, source_account_id) is None or db.get(Account, target_account_id) is None:
+        raise HTTPException(status_code=404, detail="account not found")
+
+    execute_merge(
+        db,
+        source_account_id=source_account_id,
+        target_account_id=target_account_id,
+        discard_source_transaction_ids=set(discard_transaction_ids),
+    )
+    return RedirectResponse(url=f"/accounts/{target_account_id}", status_code=303)
 
 
 @router.get("/{account_id}")

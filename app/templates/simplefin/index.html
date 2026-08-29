@@ -12,8 +12,7 @@
   {% endif %}
   {% if sync_result %}
   <p>
-    {{ sync_result.accounts_created }} account{{ "" if sync_result.accounts_created == 1 else "s" }} added,
-    {{ sync_result.accounts_updated }} updated ·
+    {{ sync_result.accounts_updated }} account{{ "" if sync_result.accounts_updated == 1 else "s" }} synced ·
     {{ sync_result.transactions_imported }} transaction{{ "" if sync_result.transactions_imported == 1 else "s" }} imported,
     {{ sync_result.transactions_skipped }} already up to date.
   </p>

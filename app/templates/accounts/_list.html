@@ -12,7 +12,7 @@
     </p>
     <p class="account-card__balance-source">{{ balance_caption(row.balance) }}</p>
     <span class="pill">{{ row.transaction_count }} transaction{{ "" if row.transaction_count == 1 else "s" }}</span>
-    {% if row.account.source == "simplefin" %}<span class="pill">Synced</span>{% endif %}
+    {% if row.account.simplefin_account_id is not none %}<span class="pill">Synced</span>{% endif %}
   </a>
   {% endfor %}
 </div>

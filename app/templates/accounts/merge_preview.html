@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}Review merge — Finance Tracker{% endblock %}
+
+{% block content %}
+<h1>Review merge</h1>
+<p class="account-card__meta">
+  Merging <strong>{{ source.name }}</strong> into <strong>{{ target.name }}</strong> —
+  {{ source.name }} will be deleted once confirmed.
+</p>
+
+<form method="post" action="/accounts/merge/confirm">
+  <input type="hidden" name="source_account_id" value="{{ source.id }}" />
+  <input type="hidden" name="target_account_id" value="{{ target.id }}" />
+
+  {% if pairs %}
+  <div class="card">
+    <h2>Possible duplicates — {{ pairs | length }} pair{{ "" if pairs | length == 1 else "s" }}</h2>
+    <p class="account-card__meta">
+      Same date and amount on both sides. Checked pairs are treated as one transaction —
+      only {{ target.name }}'s copy is kept. Uncheck any that are actually two separate transactions.
+    </p>
+    <div class="table-scroll">
+      <table class="txn-table">
+        <thead>
+          <tr><th>Keep?</th><th>Date</th><th>{{ source.name }}</th><th>{{ target.name }}</th><th>Amount</th></tr>
+        </thead>
+        <tbody>
+          {% for s, t in pairs %}
+          <tr>
+            <td><label><input type="checkbox" name="discard_transaction_ids" value="{{ s.id }}" checked /> same</label></td>
+            <td class="figure">{{ s.date }}</td>
+            <td>{{ s.description }}</td>
+            <td>{{ t.description }}</td>
+            <td class="figure {% if s.amount >= 0 %}figure--income{% else %}figure--expense{% endif %}">{{ s.amount | money }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <h2>Will move over as-is — {{ unmatched | length }} transaction{{ "" if unmatched | length == 1 else "s" }}</h2>
+    {% if unmatched %}
+    <p class="account-card__meta">No matching date+amount found in {{ target.name }} — these just get added, no duplicate risk.</p>
+    {% else %}
+    <p class="account-card__meta">Nothing else to move.</p>
+    {% endif %}
+  </div>
+
+  <div class="import-actions">
+    <button type="submit" class="btn">Confirm merge</button>
+    <a class="btn btn-secondary" href="/accounts/merge">Cancel</a>
+  </div>
+</form>
+{% endblock %}

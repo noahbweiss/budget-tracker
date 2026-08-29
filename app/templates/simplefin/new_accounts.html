@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block title %}New accounts found — Finance Tracker{% endblock %}
+
+{% block content %}
+<h1>New accounts found</h1>
+<p class="account-card__meta">
+  SimpleFin found {{ new_accounts | length }} account{{ "" if new_accounts | length == 1 else "s" }} not yet linked to
+  anything in this app. For each one: is it brand new, or does it match an account you already have
+  (e.g. one you've CSV-imported)? Picking an existing account avoids ending up with a duplicate you'd
+  have to merge later.
+</p>
+
+<form method="post" action="/simplefin/resolve-new-accounts">
+  {% for remote in new_accounts %}
+  <div class="card form-card">
+    <h2>{{ remote.name or remote.id }}</h2>
+    <p class="account-card__meta">
+      {{ remote.org.name if remote.org else "Unknown institution" }}
+      {% if remote.balance is not none %}· reports a balance of ${{ remote.balance }}{% endif %}
+      · {{ (remote.transactions or []) | length }} transaction{{ "" if (remote.transactions or []) | length == 1 else "s" }} in the last {{ lookback_days }} days
+    </p>
+    <input type="hidden" name="remote_account_json" value='{{ remote | tojson }}' />
+    <label>
+      This is
+      <select name="choice">
+        <option value="new">A new account — create it</option>
+        {% for a in existing_accounts %}
+        <option value="{{ a.id }}">The same as: {{ a.name }}{% if a.institution %} ({{ a.institution }}){% endif %}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </div>
+  {% endfor %}
+  <button type="submit" class="btn">Confirm</button>
+</form>
+{% endblock %}
