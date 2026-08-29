@@ -26,6 +26,19 @@
   --expense: #b0362b;
   --shadow: 0 1px 2px rgba(28, 27, 25, 0.06), 0 1px 1px rgba(28, 27, 25, 0.04);
 
+  /* Categorical palette for the category-breakdown donut — deliberately
+     distinct hues from --income/--expense/--accent (those stay reserved
+     for their own signals, see the file header). Cycled by index, not
+     tied to any particular category. */
+  --cat-0: #5b7a9d;
+  --cat-1: #c98a2b;
+  --cat-2: #8a5a83;
+  --cat-3: #3f8f8a;
+  --cat-4: #cc7a33;
+  --cat-5: #7a8a4f;
+  --cat-6: #6b5b95;
+  --cat-7: #8a7355;
+
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue",
     Arial, sans-serif;
   --font-mono: ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Menlo,
@@ -47,6 +60,15 @@
     --income: #4caf7d;
     --expense: #e2695c;
     --shadow: none;
+
+    --cat-0: #8fb0d9;
+    --cat-1: #e0a94a;
+    --cat-2: #b98bb0;
+    --cat-3: #6bc2bd;
+    --cat-4: #e0925c;
+    --cat-5: #a3b578;
+    --cat-6: #9a8bc4;
+    --cat-7: #c2a988;
   }
 }
 
@@ -512,50 +534,113 @@ a.card:hover {
   max-height: 320px;
 }
 
-.category-breakdown {
+/* ---- Dashboard: account sidebar (dashboard-only, not a global layout
+   element — see routers/dashboard.py) ---- */
+
+.dashboard-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 2rem;
+}
+
+.dashboard-sidebar {
+  flex: 0 0 200px;
+  position: sticky;
+  top: 1.5rem;
+}
+
+.dashboard-sidebar__heading {
+  color: var(--ink-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin: 0 0 0.6rem;
+}
+
+.dashboard-sidebar__nav {
+  display: flex;
+  flex-direction: column;
+}
+
+.dashboard-sidebar__link {
+  color: var(--ink-muted);
+  text-decoration: none;
+  font-size: 0.9rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: var(--radius);
+  border-left: 2px solid transparent;
+}
+
+.dashboard-sidebar__link:hover {
+  color: var(--ink);
+  background: var(--bg-elevated);
+}
+
+.dashboard-sidebar__link.active {
+  color: var(--ink);
+  font-weight: 600;
+  border-left-color: var(--accent);
+  background: var(--bg-elevated);
+}
+
+.dashboard-main {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ---- Dashboard: category breakdown (donut + legend) ---- */
+
+.category-breakdown-layout {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+
+.category-donut-wrap {
+  flex: 0 0 200px;
+  width: 200px;
+}
+
+.category-legend {
   list-style: none;
   margin: 0;
   padding: 0;
+  flex: 1;
+  min-width: 220px;
 }
 
-.category-breakdown li {
+.category-legend li {
   display: grid;
-  grid-template-columns: 9rem 1fr auto;
+  grid-template-columns: 0.7rem 1fr auto auto;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.5rem 0;
+  gap: 0.6rem;
+  padding: 0.4rem 0;
   border-top: 1px solid var(--line);
 }
 
-.category-breakdown li:first-child {
+.category-legend li:first-child {
   border-top: none;
 }
 
-.category-breakdown__name {
+.category-legend__swatch {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 2px;
+}
+
+.category-legend__name {
   font-size: 0.88rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.category-breakdown__bar-track {
-  background: var(--line);
-  border-radius: 999px;
-  height: 6px;
-  overflow: hidden;
-}
-
-.category-breakdown__bar {
-  display: block;
-  height: 100%;
-}
-
-.category-breakdown__bar--income {
-  background: var(--income);
-}
-
-.category-breakdown__bar--expense {
-  background: var(--expense);
+.category-legend__share {
+  color: var(--ink-muted);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
 }
 
 /* ---- Empty state ---- */

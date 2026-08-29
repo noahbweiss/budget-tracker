@@ -1,106 +1,147 @@
 {# Dashboard inner content — rendered inside #dashboard-content in
    dashboard/index.html on a normal page load, and returned standalone
-   (this file only, no layout) for HTMX range-switch/period-nav swaps.
+   (this file only, no layout) for HTMX range-switch/period-nav/account-
+   switch swaps. The account sidebar lives in here too (not just the
+   chart/summary area) so its "active" state and the heading stay in
+   sync on every swap — see routers/dashboard.py's docstring for why
+   this sidebar is dashboard-only rather than a global layout element.
    Keep this fragment free of <script> tags: HTMX doesn't execute scripts
    injected via a swap, so chart re-render logic lives in js/dashboard.js
    instead, listening for htmx:afterSwap. #}
 
-<div class="range-switcher" role="tablist" aria-label="Select time range">
-  {% for r in valid_ranges %}
-  <button
-    type="button"
-    class="range-switcher__btn{% if r == range_type %} active{% endif %}"
-    hx-get="/dashboard/{{ r }}"
-    hx-target="#dashboard-content"
-    hx-swap="innerHTML"
-    hx-push-url="/dashboard/{{ r }}"
-    {% if r == range_type %}aria-current="true"{% endif %}
-  >{{ r | capitalize }}</button>
-  {% endfor %}
-</div>
+{% set acct_qs = "?account_id=" ~ selected_account.id if selected_account else "" %}
+{% set acct_suffix = "&account_id=" ~ selected_account.id if selected_account else "" %}
 
-<div class="period-nav">
-  <button
-    type="button"
-    class="period-nav__btn"
-    hx-get="/dashboard/{{ range_type }}?offset={{ offset + 1 }}"
-    hx-target="#dashboard-content"
-    hx-swap="innerHTML"
-    hx-push-url="/dashboard/{{ range_type }}?offset={{ offset + 1 }}"
-    aria-label="Previous period"
-  >‹</button>
+<div class="dashboard-layout">
+  <aside class="dashboard-sidebar">
+    <h2 class="dashboard-sidebar__heading">Accounts</h2>
+    <nav class="dashboard-sidebar__nav">
+      <a
+        class="dashboard-sidebar__link{% if not selected_account %} active{% endif %}"
+        href="/dashboard/{{ range_type }}"
+        hx-get="/dashboard/{{ range_type }}"
+        hx-target="#dashboard-content"
+        hx-swap="innerHTML"
+        hx-push-url="/dashboard/{{ range_type }}"
+      >All accounts</a>
+      {% for a in accounts %}
+      <a
+        class="dashboard-sidebar__link{% if selected_account and selected_account.id == a.id %} active{% endif %}"
+        href="/dashboard/{{ range_type }}?account_id={{ a.id }}"
+        hx-get="/dashboard/{{ range_type }}?account_id={{ a.id }}"
+        hx-target="#dashboard-content"
+        hx-swap="innerHTML"
+        hx-push-url="/dashboard/{{ range_type }}?account_id={{ a.id }}"
+      >{{ a.name }}</a>
+      {% endfor %}
+    </nav>
+  </aside>
 
-  <div class="period-nav__label">
-    <span class="period-nav__title">{{ period_label }}</span>
-    {% if progress %}
-    <span class="period-nav__progress">Day {{ progress.elapsed }} of {{ progress.total }}</span>
-    {% elif offset != 0 %}
-    <button
-      type="button"
-      class="period-nav__today"
-      hx-get="/dashboard/{{ range_type }}"
-      hx-target="#dashboard-content"
-      hx-swap="innerHTML"
-      hx-push-url="/dashboard/{{ range_type }}"
-    >Jump to current</button>
+  <div class="dashboard-main">
+    <h1>{{ selected_account.name if selected_account else "Overview" }}</h1>
+
+    <div class="range-switcher" role="tablist" aria-label="Select time range">
+      {% for r in valid_ranges %}
+      <button
+        type="button"
+        class="range-switcher__btn{% if r == range_type %} active{% endif %}"
+        hx-get="/dashboard/{{ r }}{{ acct_qs }}"
+        hx-target="#dashboard-content"
+        hx-swap="innerHTML"
+        hx-push-url="/dashboard/{{ r }}{{ acct_qs }}"
+        {% if r == range_type %}aria-current="true"{% endif %}
+      >{{ r | capitalize }}</button>
+      {% endfor %}
+    </div>
+
+    <div class="period-nav">
+      <button
+        type="button"
+        class="period-nav__btn"
+        hx-get="/dashboard/{{ range_type }}?offset={{ offset + 1 }}{{ acct_suffix }}"
+        hx-target="#dashboard-content"
+        hx-swap="innerHTML"
+        hx-push-url="/dashboard/{{ range_type }}?offset={{ offset + 1 }}{{ acct_suffix }}"
+        aria-label="Previous period"
+      >‹</button>
+
+      <div class="period-nav__label">
+        <span class="period-nav__title">{{ period_label }}</span>
+        {% if progress %}
+        <span class="period-nav__progress">Day {{ progress.elapsed }} of {{ progress.total }}</span>
+        {% elif offset != 0 %}
+        <button
+          type="button"
+          class="period-nav__today"
+          hx-get="/dashboard/{{ range_type }}{{ acct_qs }}"
+          hx-target="#dashboard-content"
+          hx-swap="innerHTML"
+          hx-push-url="/dashboard/{{ range_type }}{{ acct_qs }}"
+        >Jump to current</button>
+        {% endif %}
+      </div>
+
+      {% if can_go_forward %}
+      <button
+        type="button"
+        class="period-nav__btn"
+        hx-get="/dashboard/{{ range_type }}?offset={{ offset - 1 }}{{ acct_suffix }}"
+        hx-target="#dashboard-content"
+        hx-swap="innerHTML"
+        hx-push-url="/dashboard/{{ range_type }}?offset={{ offset - 1 }}{{ acct_suffix }}"
+        aria-label="Next period"
+      >›</button>
+      {% else %}
+      <span class="period-nav__btn period-nav__btn--disabled" aria-hidden="true">›</span>
+      {% endif %}
+    </div>
+
+    <div class="card-grid dashboard-summary">
+      <div class="card">
+        <h2>Income</h2>
+        <p class="figure figure--income figure--big">${{ "%.2f"|format(totals.income) }}</p>
+      </div>
+      <div class="card">
+        <h2>Spending</h2>
+        <p class="figure figure--expense figure--big">${{ "%.2f"|format(totals.spending) }}</p>
+      </div>
+      <div class="card">
+        <h2>Net</h2>
+        <p class="figure figure--big {% if totals.net >= 0 %}figure--income{% else %}figure--expense{% endif %}">{{ totals.net | money }}</p>
+      </div>
+    </div>
+
+    {% if buckets %}
+    <div class="card">
+      <h2>Over time</h2>
+      <canvas id="dashboard-chart" data-buckets='{{ buckets | tojson }}'></canvas>
+    </div>
+    {% endif %}
+
+    {% if by_category %}
+    <div class="card">
+      <h2>By category</h2>
+      <div class="category-breakdown-layout">
+        <div class="category-donut-wrap">
+          <canvas id="category-chart" data-categories='{{ chart_categories | tojson }}'></canvas>
+        </div>
+        <ul class="category-legend">
+          {% for c in by_category %}
+          <li>
+            <span class="category-legend__swatch" style="background: var(--cat-{{ loop.index0 % 8 }})"></span>
+            <span class="category-legend__name">{{ c.category }}</span>
+            <span class="category-legend__share">{{ (c.share * 100) | round(0, "common") | int }}%</span>
+            <span class="figure figure--{{ c.kind }}">${{ "%.2f"|format(c.total) }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <h1>No transactions in this period</h1>
+      <p>Once you import a CSV or connect a bank, spending and income will show up here.</p>
+    </div>
     {% endif %}
   </div>
-
-  {% if can_go_forward %}
-  <button
-    type="button"
-    class="period-nav__btn"
-    hx-get="/dashboard/{{ range_type }}?offset={{ offset - 1 }}"
-    hx-target="#dashboard-content"
-    hx-swap="innerHTML"
-    hx-push-url="/dashboard/{{ range_type }}?offset={{ offset - 1 }}"
-    aria-label="Next period"
-  >›</button>
-  {% else %}
-  <span class="period-nav__btn period-nav__btn--disabled" aria-hidden="true">›</span>
-  {% endif %}
 </div>
-
-<div class="card-grid dashboard-summary">
-  <div class="card">
-    <h2>Income</h2>
-    <p class="figure figure--income figure--big">${{ "%.2f"|format(totals.income) }}</p>
-  </div>
-  <div class="card">
-    <h2>Spending</h2>
-    <p class="figure figure--expense figure--big">${{ "%.2f"|format(totals.spending) }}</p>
-  </div>
-  <div class="card">
-    <h2>Net</h2>
-    <p class="figure figure--big {% if totals.net >= 0 %}figure--income{% else %}figure--expense{% endif %}">{{ totals.net | money }}</p>
-  </div>
-</div>
-
-{% if buckets %}
-<div class="card">
-  <h2>Over time</h2>
-  <canvas id="dashboard-chart" data-buckets='{{ buckets | tojson }}'></canvas>
-</div>
-{% endif %}
-
-{% if by_category %}
-<div class="card">
-  <h2>By category</h2>
-  <ul class="category-breakdown">
-    {% for c in by_category %}
-    <li>
-      <span class="category-breakdown__name">{{ c.category }}</span>
-      <span class="category-breakdown__bar-track">
-        <span class="category-breakdown__bar category-breakdown__bar--{{ c.kind }}" style="width: {{ (c.share * 100) | round(1) }}%"></span>
-      </span>
-      <span class="figure figure--{{ c.kind }}">${{ "%.2f"|format(c.total) }}</span>
-    </li>
-    {% endfor %}
-  </ul>
-</div>
-{% else %}
-<div class="empty-state">
-  <h1>No transactions in this period</h1>
-  <p>Once you import a CSV or connect a bank, spending and income will show up here.</p>
-</div>
-{% endif %}

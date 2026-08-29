@@ -6,7 +6,7 @@ Reference doc for working on this repo. Read this before making changes; update 
 
 A local-first, open-source personal finance tracker (FastAPI + SQLite). Users track budget/spending/income across daily/weekly/monthly/quarterly/yearly views, with tiered bank connectivity: CSV/OFX import as the zero-config default, optional live sync via SimpleFin (user-supplied token, no bank credentials ever touch this app or a server we run). Goal is an open-source project anyone can one-click-run (Docker) and fork/extend, eventually packaged as a native desktop app via Tauri (`src-tauri/`, wraps the same FastAPI backend as a subprocess — no duplicated logic).
 
-**Status:** all 5 planned phases are done — Dashboard, Accounts/Transactions, CSV/OFX import, and SimpleFin live sync are fully wired end-to-end, plus post-launch fixes from real usage: the dashboard shows one period at a time (not all-history), account balance is trustworthy (bank-reported when available, not just a raw transaction sum), two accounts can be merged into one, and SimpleFin no longer silently creates a duplicate account for something you've already CSV-imported. Remaining work is UI polish (accounts-page issues flagged by real usage, not yet itemized) and whatever's next in `PLAN.md`'s "Later / unscheduled" section.
+**Status:** all 5 planned phases are done — Dashboard, Accounts/Transactions, CSV/OFX import, and SimpleFin live sync are fully wired end-to-end, plus post-launch fixes from real usage: the dashboard shows one period at a time (not all-history), account balance is trustworthy (bank-reported when available, not just a raw transaction sum), two accounts can be merged into one, and SimpleFin no longer silently creates a duplicate account for something you've already CSV-imported. A first UI pass (from a Figma wireframe) reshaped the dashboard: renamed to "Overview," gained per-account filtering via a sidebar, and replaced the category-breakdown list with a donut chart. Remaining work is more UI polish (accounts-page issues flagged by real usage, not yet itemized) and whatever's next in `PLAN.md`'s "Later / unscheduled" section.
 
 ## Architecture
 
@@ -32,6 +32,8 @@ When implementing a stub, replace both halves together: make the service functio
 **HTML-rendering pattern (established in `routers/dashboard.py`, Phase 2):** a router that renders UI imports `templates` from `app.templating` (not from `app.main` — that would be a circular import, since `main.py` imports the routers). It checks `request.headers.get("hx-request") == "true"` to decide whether to return a full page (extends `base.html`) or just the inner fragment for an HTMX swap target. Keep `<script>` tags out of swapped fragments — HTMX doesn't execute scripts injected via a swap — so any JS that needs to react to new content (e.g. rebuilding a Chart.js chart) belongs in a page-level script listening for `htmx:afterSwap`, not inside the fragment template itself.
 
 **When to use HTMX vs. a plain form (established in Phase 3):** not everything needs to be an HTMX partial. Infrequent, whole-record actions (create/edit an account) use a plain `<form method="post">` + a 303 redirect — works without JS, simplest code. Frequent, per-row actions (categorizing a transaction) use HTMX (`hx-post` + `hx-target="closest tr"` + `hx-swap="outerHTML"`) so there's no full-page reload. Pick based on frequency/graininess of the action, not by default.
+
+**Everything that must stay in sync belongs inside the HTMX swap target (established in `dashboard/_content.html`, UI pass 1):** HTMX only updates the element named by `hx-target` — anything outside it (a page heading, a sidebar's "active" state) goes stale on a swap unless it's also inside that element. The dashboard's account sidebar lives inside `#dashboard-content`, not next to it, specifically so its "active" highlight and the page's `<h1>` (which shows the selected account's name) update correctly when an account/range/period switch swaps that region. If a new element needs to reflect state that a swap can change, put it inside the swapped fragment.
 
 **Rendering money in a template:** always use the `money` filter (`{{ amount | money }}`, registered in `app.templating`), never hand-rolled `"%.2f"|format(...)` with a literal `$` — that produces `$-19.99` instead of `-$19.99` for negative values. Exception: values that are already-unsigned magnitudes (e.g. `aggregation.py`'s `totals.income`/`totals.spending`/`by_category[].total`, which are deliberately abs()'d) don't need it, though using it anyway is harmless.
 
@@ -74,7 +76,7 @@ Rationale: keeps "clone and run" trivial for forkers (no `npm install`/build pip
 - Clean, minimal budgeting-app aesthetic — think restrained dashboard, not marketing-site flashy. Card-based layout for account summaries, category breakdowns, and totals.
 - Chart.js for spend/income within the selected period — see the dashboard convention below for what "period" means.
 - Light + dark mode via CSS custom properties (`:root` variables, no separate stylesheets), respecting `prefers-color-scheme` by default.
-- Color used sparingly and meaningfully: green/red reserved for income/expense signal (matching the model's signed-amount convention), not used decoratively elsewhere.
+- Color used sparingly and meaningfully: green/red reserved for income/expense signal (matching the model's signed-amount convention), not used decoratively elsewhere. Distinguishing many small categories (the category-breakdown donut) uses a separate categorical palette (`--cat-0`..`--cat-7` in `style.css`, light + dark variants) — deliberately different hues from income/expense/accent, cycled by index, not tied to any specific category.
 - HTMX handles the interactive bits (range switching, live-updating fragments) — server returns rendered HTML fragments, not JSON, to HTMX-triggered requests. (`dashboard.py`'s own TODO already anticipates this: "return an HTMX-rendered template fragment instead of raw JSON.")
 
 ## Known gaps
@@ -91,11 +93,14 @@ Resolved in Phase 5 (2026-08-28): SimpleFin connect + sync is real — `simplefi
 
 Resolved post-Phase-5 (2026-08-29, real usage feedback): SimpleFin no longer silently auto-creates a duplicate `Account` for something already CSV-imported — new remote accounts stop at a review step offering "create new" or "link to existing" (see the "never silently auto-create" convention above). `app/services/account_merge.py` + `/accounts/merge*` let you clean up accounts that already got split before this existed, with a human-reviewed duplicate-transaction check (matched by date+amount, since CSV and SimpleFin transactions never share an external_id even for the same real transaction).
 
+Resolved in UI pass 1 (2026-08-29, from a Figma wireframe): dashboard renamed "Overview," gained an account-filter sidebar (dashboard-only — see `routers/dashboard.py`'s docstring for why not global), category breakdown is now a donut chart + legend instead of a horizontal-bar list, and a `/plan/` nav stub exists (real page, no logic yet).
+
 Still open:
 - Account delete isn't implemented standalone (hard-delete-vs-archive is a real decision, deferred until needed) — merging (which does delete the absorbed account) is safe because everything is preserved by moving it first; a standalone "just delete this account" action still needs that policy decision.
 - No way to manually create a single transaction — by design, transactions arrive via import or sync.
 - No category-management UI — categories come from a fixed default set (`app/services/categories.py`).
-- Accounts-page UI issues flagged by real usage, not yet itemized — waiting on specifics before a UI-polish pass.
+- No budget-planning logic behind the `/plan/` page yet — it's a nav stub, not a feature; what it should actually do (per-category targets? monthly budget vs. actual?) hasn't been scoped.
+- Accounts-page UI issues flagged by real usage, not yet itemized — waiting on specifics before the next UI-polish pass.
 - OFX parsing is a pragmatic regex extractor for the standard single-account `<STMTTRN>` structure, not a full SGML/XML parser — see `csv_importer.py`'s `parse_ofx` docstring for what it doesn't handle.
 - No background/scheduled SimpleFin sync (manual "Sync now" only) and no multi-bridge "Connect another bank" UI (the data model supports it, the UI doesn't yet).
 - No pending-transaction reconciliation for SimpleFin — a transaction that transitions from pending to posted could in theory get a new id and show up as an extra row.

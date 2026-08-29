@@ -43,9 +43,13 @@ _SUB_BUCKET = {
 }
 
 
-def get_period_dashboard(db: Session, range_type: str, offset: int = 0, today: date | None = None) -> dict:
+def get_period_dashboard(
+    db: Session, range_type: str, offset: int = 0, today: date | None = None, account_id: int | None = None
+) -> dict:
     """Aggregate transactions for one period of `range_type`, `offset`
-    periods back from the current one (0 = current).
+    periods back from the current one (0 = current). `account_id` scopes
+    everything (totals, buckets, by_category) to just that account —
+    None (the default) means every account.
 
     Returns:
         {
@@ -76,12 +80,10 @@ def get_period_dashboard(db: Session, range_type: str, offset: int = 0, today: d
 
     buckets_by_key = {b["period"]: b for b in _build_period_buckets(start, end, granularity)}
 
-    transactions = (
-        db.query(Transaction)
-        .filter(Transaction.date >= start, Transaction.date <= end)
-        .order_by(Transaction.date)
-        .all()
-    )
+    query = db.query(Transaction).filter(Transaction.date >= start, Transaction.date <= end)
+    if account_id is not None:
+        query = query.filter(Transaction.account_id == account_id)
+    transactions = query.order_by(Transaction.date).all()
 
     category_totals: dict[int | None, Decimal] = {}
     total_income = Decimal("0")

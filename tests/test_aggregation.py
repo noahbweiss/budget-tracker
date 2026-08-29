@@ -263,3 +263,57 @@ def test_by_category_still_works_within_a_period(db_session):
 def test_get_period_dashboard_unknown_range_type_raises(db_session):
     with pytest.raises(ValueError):
         aggregation.get_period_dashboard(db_session, "decade", offset=0, today=date(2026, 1, 1))
+
+
+# ---- account_id filter ----
+
+
+def test_account_id_filters_to_just_that_account(db_session):
+    from app.models import Account
+
+    checking = Account(name="Checking", account_type="checking")
+    savings = Account(name="Savings", account_type="savings")
+    db_session.add_all([checking, savings])
+    db_session.flush()
+    _txn(db_session, checking.id, date(2026, 8, 5), -40)
+    _txn(db_session, savings.id, date(2026, 8, 6), 500)
+    db_session.commit()
+
+    result = aggregation.get_period_dashboard(db_session, "monthly", offset=0, today=date(2026, 8, 28), account_id=checking.id)
+
+    assert result["totals"]["spending"] == Decimal("40")
+    assert result["totals"]["income"] == Decimal("0")
+
+
+def test_account_id_none_includes_all_accounts(db_session):
+    from app.models import Account
+
+    checking = Account(name="Checking", account_type="checking")
+    savings = Account(name="Savings", account_type="savings")
+    db_session.add_all([checking, savings])
+    db_session.flush()
+    _txn(db_session, checking.id, date(2026, 8, 5), -40)
+    _txn(db_session, savings.id, date(2026, 8, 6), 500)
+    db_session.commit()
+
+    result = aggregation.get_period_dashboard(db_session, "monthly", offset=0, today=date(2026, 8, 28), account_id=None)
+
+    assert result["totals"]["spending"] == Decimal("40")
+    assert result["totals"]["income"] == Decimal("500")
+
+
+def test_account_id_scopes_category_breakdown_too(db_session):
+    from app.models import Account, Category
+
+    checking = Account(name="Checking", account_type="checking")
+    savings = Account(name="Savings", account_type="savings")
+    groceries = Category(name="Groceries", kind="expense")
+    db_session.add_all([checking, savings, groceries])
+    db_session.flush()
+    _txn(db_session, checking.id, date(2026, 8, 5), -40, category_id=groceries.id)
+    _txn(db_session, savings.id, date(2026, 8, 6), -15, category_id=groceries.id)
+    db_session.commit()
+
+    result = aggregation.get_period_dashboard(db_session, "monthly", offset=0, today=date(2026, 8, 28), account_id=checking.id)
+
+    assert result["by_category"] == [{"category": "Groceries", "kind": "expense", "total": Decimal("40"), "share": 1.0}]
