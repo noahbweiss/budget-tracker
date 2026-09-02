@@ -19,6 +19,17 @@ descriptions can tell the difference.
 pair survives); everything else — unmatched transactions, and any
 candidate pair the human rejected — is simply moved onto the target
 account.
+
+Transfer-pair integrity (added alongside app/services/transfers.py):
+a merge can affect a transaction's transfer_pair_id two ways — a
+discarded transaction might be one side of a transfer pair (its partner
+would otherwise dangle, pointing at a deleted row), and a transaction
+moved onto the target account might turn out to now share an account
+with its transfer partner (the two accounts that had the transfer
+between them are being merged into one, so it isn't a transfer to
+anywhere anymore). Both are handled below rather than left to the
+transfers module, since only execute_merge() knows which transactions
+are being deleted vs. moved onto which account.
 """
 from collections import defaultdict
 from dataclasses import dataclass
@@ -26,6 +37,7 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from app.models import Account, Transaction
+from app.services import transfers
 
 
 def find_duplicate_candidates(
@@ -87,13 +99,19 @@ def execute_merge(
 
     moved = 0
     discarded = 0
+    moved_transactions: list[Transaction] = []
     for txn in db.query(Transaction).filter(Transaction.account_id == source_account_id).all():
         if txn.id in discard_source_transaction_ids:
+            # A discarded transaction might be one side of a transfer pair
+            # — clear its partner's fields before the row disappears, or
+            # the partner would be left pointing at a deleted transaction.
+            transfers.clear_pair_on_delete(db, txn)
             db.delete(txn)
             discarded += 1
         else:
             txn.account_id = target_account_id
             moved += 1
+            moved_transactions.append(txn)
 
     # Flush the reassignments before deleting source: otherwise SQLAlchemy's
     # unit-of-work can still treat these transactions as source's children
@@ -103,6 +121,22 @@ def execute_merge(
     # NOT NULL. Flushing first means the delete's cascade check sees them
     # already moved.
     db.flush()
+
+    # A transfer pair that now has both sides on the same account (the
+    # two accounts that had the transfer between them are being merged
+    # into one) is no longer a transfer at all — clear both sides. Only
+    # moved transactions can trigger this: an unmoved (discarded) side
+    # was already handled above, and a transaction that was already on
+    # the target account before the merge can't newly collide with
+    # anything by this merge alone.
+    for txn in moved_transactions:
+        if txn.is_transfer and txn.transfer_pair_id is not None:
+            pair = db.get(Transaction, txn.transfer_pair_id)
+            if pair is not None and pair.account_id == target_account_id:
+                txn.is_transfer = False
+                txn.transfer_pair_id = None
+                pair.is_transfer = False
+                pair.transfer_pair_id = None
 
     if target.simplefin_account_id is None and source.simplefin_account_id is not None:
         target.simplefin_account_id = source.simplefin_account_id

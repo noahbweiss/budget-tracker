@@ -3,7 +3,11 @@
 `db_session` gives each test an isolated in-memory SQLite database (fresh
 schema via Base.metadata.create_all, torn down after the test) so
 aggregation/CRUD logic can be tested against real queries without touching
-the app's actual data/finance.db file.
+the app's actual data/finance.db file. It also seeds the system tags
+(ensure_system_tags) the same way real startup does — tests exercising
+tag toggling, reimbursement, or anything that queries Tag need those
+rows to exist, and this fixture is where every other test's DB already
+gets set up.
 
 `client` builds on that for router-level tests: a TestClient with the
 app's get_db dependency overridden to use the isolated db_session, so
@@ -21,6 +25,7 @@ from sqlalchemy.pool import StaticPool
 from app.database import Base, get_db
 from app.main import app
 from app.models import Account, Category, Transaction
+from app.services.tags import ensure_system_tags
 
 
 @pytest.fixture()
@@ -39,6 +44,7 @@ def db_session():
     Base.metadata.create_all(bind=engine)
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     session = SessionLocal()
+    ensure_system_tags(session)
     try:
         yield session
     finally:

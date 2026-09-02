@@ -1,9 +1,16 @@
 """SQLAlchemy engine/session setup.
 
-TODO: add Alembic migrations once the schema stabilizes. For the skeleton
-stage, tables are created directly from models at startup (see main.py).
+Schema changes go through Alembic (migrations/ at the repo root) — see
+run_migrations() below. This replaced an earlier stopgap
+(create_all() + a hand-maintained _ADDED_COLUMNS list of raw ALTER TABLEs)
+that worked but was never a real migration system; it's gone now, not kept
+alongside the new one.
 """
-from sqlalchemy import Engine, create_engine, inspect, text
+from pathlib import Path
+
+from alembic import command
+from alembic.config import Config
+from sqlalchemy import create_engine, inspect
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from app.config import settings
@@ -30,35 +37,65 @@ def get_db():
         db.close()
 
 
-# Columns added to models after this app already had real user data in the
-# wild — Base.metadata.create_all() only creates *missing* tables, it never
-# alters existing ones, so a fresh install gets these for free (create_all
-# makes the table with the column already there) but an existing
-# data/finance.db needs an explicit ALTER TABLE. This is a stopgap until
-# Alembic is set up (see the module docstring's TODO); it's deliberately
-# tiny — just "does this column exist, add it if not" — not a general
-# migration system.
-_ADDED_COLUMNS = [
-    ("accounts", "starting_balance", "NUMERIC(12, 2)"),
-    ("transactions", "balance", "NUMERIC(12, 2)"),
-    ("accounts", "simplefin_account_id", "VARCHAR(255)"),
-    ("accounts", "simplefin_connection_id", "INTEGER"),
-    ("accounts", "reported_balance", "NUMERIC(12, 2)"),
-    ("accounts", "reported_balance_as_of", "DATE"),
-]
+# Repo root — app/database.py -> app/ -> repo root — same anchoring pattern
+# main.py uses for APP_DIR, so this doesn't depend on the process's cwd.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_ALEMBIC_INI = _REPO_ROOT / "alembic.ini"
+
+# The very first Alembic revision (migrations/versions/0001_baseline_schema.py)
+# captures the exact schema this app already had before Alembic existed —
+# see that file's own docstring. This constant, not the string "head", is
+# what a pre-Alembic existing database gets stamped at (see run_migrations
+# below): stamping at "head" would be wrong the moment a second revision
+# ships, since it would skip that revision entirely on an existing database
+# that never actually had it applied.
+_BASELINE_REVISION = "0001"
 
 
-def ensure_schema_migrations(engine: Engine) -> None:
-    """Idempotent: add any column in _ADDED_COLUMNS that's missing from an
-    existing table. Call after Base.metadata.create_all(), which must run
-    first so a brand-new database has the tables to inspect at all.
+def run_migrations(database_url: str | None = None) -> None:
+    """Bring the database schema up to date via Alembic.
+
+    `database_url` defaults to settings.database_url (the app's real
+    database) — overriding it is for tests, so this function can be
+    exercised against a throwaway SQLite file instead of the real one.
+
+    Two cases, distinguished by what's already in the database:
+
+    - Genuinely empty database (no tables at all — a fresh clone or a
+      test's throwaway file): run every migration from the start,
+      `alembic upgrade head`. This creates the schema from scratch, same
+      end result Base.metadata.create_all() used to produce.
+    - Existing pre-Alembic database (this app's tables already exist, but
+      there's no alembic_version table yet — i.e. every real installation
+      that existed before this function did): the schema is already at
+      exactly the baseline revision, from create_all() + the old
+      _ADDED_COLUMNS stopgap having already run historically. Replaying
+      the baseline's CREATE TABLEs would fail (the tables are already
+      there), so this stamps the database at _BASELINE_REVISION — marks it
+      as "already at this revision" with no DDL executed — and then runs
+      `upgrade head` normally, which applies anything added after the
+      baseline.
+
+    A database already managed by Alembic (has an alembic_version table)
+    just gets a normal `upgrade head` either way.
     """
-    inspector = inspect(engine)
-    table_names = set(inspector.get_table_names())
-    with engine.begin() as conn:
-        for table, column, column_type in _ADDED_COLUMNS:
-            if table not in table_names:
-                continue  # a fresh table from create_all() already has every current column
-            existing = {c["name"] for c in inspector.get_columns(table)}
-            if column not in existing:
-                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {column_type}"))
+    url = database_url or settings.database_url
+    bind_engine = engine if database_url is None else create_engine(url)
+
+    cfg = Config(str(_ALEMBIC_INI))
+    cfg.set_main_option("script_location", str(_REPO_ROOT / "migrations"))
+    cfg.set_main_option("sqlalchemy.url", url)
+
+    try:
+        inspector = inspect(bind_engine)
+        table_names = set(inspector.get_table_names())
+        has_alembic_version = "alembic_version" in table_names
+        has_app_tables = "accounts" in table_names  # any real app table = pre-Alembic existing DB
+
+        if not has_alembic_version and has_app_tables:
+            command.stamp(cfg, _BASELINE_REVISION)
+
+        command.upgrade(cfg, "head")
+    finally:
+        if database_url is not None:
+            bind_engine.dispose()

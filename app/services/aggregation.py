@@ -64,6 +64,15 @@ def get_period_dashboard(
               # zero-filled for every sub-period in range, not just ones
               # with transactions — [] for "daily".
           "by_category": [{"category": str, "kind": "income"|"expense", "total": Decimal, "share": float}, ...],
+          "transfer_count": int,  # transactions excluded from all of the
+              # above because Transaction.is_transfer is set — surfaced so
+              # the dashboard can caption "excludes N transfers this
+              # period" rather than have money silently vanish from the
+              # totals with no explanation (see app/services/transfers.py:
+              # a transfer is real money moving between the user's own
+              # accounts, never real income or spending, so it's excluded
+              # here — but it still counts in balances.py's per-account
+              # balance, since it did change that account's balance).
         }
 
     Raises:
@@ -80,10 +89,12 @@ def get_period_dashboard(
 
     buckets_by_key = {b["period"]: b for b in _build_period_buckets(start, end, granularity)}
 
-    query = db.query(Transaction).filter(Transaction.date >= start, Transaction.date <= end)
+    base_query = db.query(Transaction).filter(Transaction.date >= start, Transaction.date <= end)
     if account_id is not None:
-        query = query.filter(Transaction.account_id == account_id)
-    transactions = query.order_by(Transaction.date).all()
+        base_query = base_query.filter(Transaction.account_id == account_id)
+
+    transfer_count = base_query.filter(Transaction.is_transfer.is_(True)).count()
+    transactions = base_query.filter(Transaction.is_transfer.is_(False)).order_by(Transaction.date).all()
 
     category_totals: dict[int | None, Decimal] = {}
     total_income = Decimal("0")
@@ -123,6 +134,7 @@ def get_period_dashboard(
         },
         "buckets": list(buckets_by_key.values()),
         "by_category": by_category,
+        "transfer_count": transfer_count,
     }
 
 

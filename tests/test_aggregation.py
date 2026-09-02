@@ -104,10 +104,12 @@ def test_unknown_range_type_raises():
 # ---- get_period_dashboard ----
 
 
-def _txn(session, account_id, d, amount, description="x", category_id=None):
+def _txn(session, account_id, d, amount, description="x", category_id=None, **kwargs):
     from app.models import Transaction
 
-    t = Transaction(account_id=account_id, category_id=category_id, date=d, amount=amount, description=description)
+    t = Transaction(
+        account_id=account_id, category_id=category_id, date=d, amount=amount, description=description, **kwargs
+    )
     session.add(t)
     return t
 
@@ -317,3 +319,74 @@ def test_account_id_scopes_category_breakdown_too(db_session):
     result = aggregation.get_period_dashboard(db_session, "monthly", offset=0, today=date(2026, 8, 28), account_id=checking.id)
 
     assert result["by_category"] == [{"category": "Groceries", "kind": "expense", "total": Decimal("40"), "share": 1.0}]
+
+
+# ---- transfer exclusion ----
+
+
+def test_transfer_excluded_from_totals(db_session):
+    from app.models import Account
+
+    checking = Account(name="Checking", account_type="checking")
+    db_session.add(checking)
+    db_session.flush()
+    _txn(db_session, checking.id, date(2026, 8, 5), -40)  # real spending
+    _txn(db_session, checking.id, date(2026, 8, 6), -500, is_transfer=True)  # a transfer, not spending
+    db_session.commit()
+
+    result = aggregation.get_period_dashboard(db_session, "monthly", offset=0, today=date(2026, 8, 28))
+
+    assert result["totals"]["spending"] == Decimal("40")
+    assert result["transfer_count"] == 1
+
+
+def test_transfer_excluded_from_both_accounts_and_the_combined_view(db_session):
+    from app.models import Account
+
+    checking = Account(name="Checking", account_type="checking")
+    credit = Account(name="Credit Card", account_type="credit")
+    db_session.add_all([checking, credit])
+    db_session.flush()
+    _txn(db_session, checking.id, date(2026, 8, 5), -500, is_transfer=True, transfer_pair_id=None)
+    _txn(db_session, credit.id, date(2026, 8, 5), 500, is_transfer=True, transfer_pair_id=None)
+    db_session.commit()
+
+    all_accounts = aggregation.get_period_dashboard(db_session, "monthly", offset=0, today=date(2026, 8, 28))
+    checking_only = aggregation.get_period_dashboard(
+        db_session, "monthly", offset=0, today=date(2026, 8, 28), account_id=checking.id
+    )
+
+    assert all_accounts["totals"]["income"] == Decimal("0")
+    assert all_accounts["totals"]["spending"] == Decimal("0")
+    assert all_accounts["transfer_count"] == 2
+    assert checking_only["totals"]["spending"] == Decimal("0")
+    assert checking_only["transfer_count"] == 1
+
+
+def test_transfer_excluded_from_category_breakdown(db_session):
+    from app.models import Account, Category
+
+    checking = Account(name="Checking", account_type="checking")
+    groceries = Category(name="Groceries", kind="expense")
+    db_session.add_all([checking, groceries])
+    db_session.flush()
+    _txn(db_session, checking.id, date(2026, 8, 5), -500, category_id=groceries.id, is_transfer=True)
+    db_session.commit()
+
+    result = aggregation.get_period_dashboard(db_session, "monthly", offset=0, today=date(2026, 8, 28))
+
+    assert result["by_category"] == []
+
+
+def test_transfer_count_is_zero_when_no_transfers(db_session):
+    from app.models import Account
+
+    checking = Account(name="Checking", account_type="checking")
+    db_session.add(checking)
+    db_session.flush()
+    _txn(db_session, checking.id, date(2026, 8, 5), -40)
+    db_session.commit()
+
+    result = aggregation.get_period_dashboard(db_session, "monthly", offset=0, today=date(2026, 8, 28))
+
+    assert result["transfer_count"] == 0

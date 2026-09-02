@@ -72,6 +72,7 @@ app/
   templates/              Jinja2 templates (empty for now)
   static/                  CSS/JS/Chart.js assets (empty for now)
 src-tauri/               Desktop app packaging (stub, filled in later)
+migrations/              Alembic migrations — schema changes go here, applied automatically at startup
 tests/                   Test suite
 data/                    SQLite database lives here (gitignored)
 ```

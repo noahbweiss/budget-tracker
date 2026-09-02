@@ -55,6 +55,39 @@ class Category(Base):
     transactions: Mapped[list["Transaction"]] = relationship(back_populates="category")
 
 
+class Tag(Base):
+    """A small, fixed, code-owned set of labels a transaction can carry —
+    unlike Category, the user can't create new ones. See
+    app/services/tags.py's SYSTEM_TAGS for the current slug list and
+    docs/2026-08-29-feature-plan.md's Phase B notes for why this is a
+    many-to-many table rather than a couple of booleans on Transaction:
+    a deliberate choice (asked of, and made by, the user directly), not
+    an oversight.
+    """
+
+    __tablename__ = "tags"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    slug: Mapped[str] = mapped_column(String(50), unique=True)
+    name: Mapped[str] = mapped_column(String(50))
+
+    transactions: Mapped[list["Transaction"]] = relationship(secondary="transaction_tags", back_populates="tags")
+
+
+class TransactionTag(Base):
+    """Join table for Transaction<->Tag. No extra columns of its own —
+    per-tag state that only makes sense for one specific tag (e.g.
+    "reimbursed," which only means anything for the "reimbursable" tag)
+    lives on Transaction directly instead, so it doesn't need to be
+    bolted onto this generic row.
+    """
+
+    __tablename__ = "transaction_tags"
+
+    transaction_id: Mapped[int] = mapped_column(ForeignKey("transactions.id"), primary_key=True)
+    tag_id: Mapped[int] = mapped_column(ForeignKey("tags.id"), primary_key=True)
+
+
 class Transaction(Base):
     __tablename__ = "transactions"
 
@@ -79,8 +112,32 @@ class Transaction(Base):
     # sum we computed that has no idea what existed before tracking began.
     balance: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
 
+    # A transfer between the user's own accounts (e.g. paying off a
+    # credit card from checking) is never real income or spending — see
+    # app/services/transfers.py and aggregation.get_period_dashboard()'s
+    # exclusion filter. transfer_pair_id optionally links this row to the
+    # transaction on the other side (opposite sign, the other account);
+    # linking is never required — a transaction can be marked as a
+    # transfer on its own with no pair at all (e.g. the other account
+    # isn't tracked in this app), and that's a fully valid end state.
+    is_transfer: Mapped[bool] = mapped_column(default=False)
+    transfer_pair_id: Mapped[int | None] = mapped_column(ForeignKey("transactions.id"), nullable=True)
+
+    # Whether an "owed to me" transaction has been paid back. Only
+    # meaningful alongside the "reimbursable" tag (see app/services/
+    # tags.py) but kept as its own column rather than folded into
+    # TransactionTag, since it's a status specific to one tag, not a
+    # generic property every tag needs. Simple manual toggle for now —
+    # no link to the actual incoming payment, no partial amounts (see
+    # CLAUDE.md's reimbursement convention for what's deferred).
+    reimbursed: Mapped[bool] = mapped_column(default=False)
+
     account: Mapped["Account"] = relationship(back_populates="transactions")
     category: Mapped["Category | None"] = relationship(back_populates="transactions")
+    transfer_pair: Mapped["Transaction | None"] = relationship(
+        "Transaction", remote_side="Transaction.id", foreign_keys=[transfer_pair_id]
+    )
+    tags: Mapped[list["Tag"]] = relationship(secondary="transaction_tags", back_populates="transactions")
 
 
 class SimplefinConnection(Base):

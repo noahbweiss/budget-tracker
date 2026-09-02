@@ -2,28 +2,14 @@
 
 {% block title %}Transactions — Finance Tracker{% endblock %}
 
+{% block head %}
+<script src="{{ url_for('static', path='js/transactions.js') }}" defer></script>
+{% endblock %}
+
 {% block content %}
 <h1>Transactions</h1>
 
-{% if transactions %}
-<div class="card">
-  <div class="table-scroll">
-    <table class="txn-table">
-      <thead>
-        <tr><th>Date</th><th>Account</th><th>Description</th><th>Category</th><th>Amount</th></tr>
-      </thead>
-      <tbody>
-        {% for transaction in transactions %}
-        {% include "transactions/_row.html" %}
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+<div id="transactions-content">
+  {% include "transactions/_content.html" %}
 </div>
-{% else %}
-<div class="empty-state">
-  <h1>No transactions yet</h1>
-  <p>Once you import a CSV or connect a bank, transactions will show up here.</p>
-</div>
-{% endif %}
 {% endblock %}

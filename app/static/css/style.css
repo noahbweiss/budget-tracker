@@ -340,6 +340,39 @@ a.card:hover {
   border-color: var(--ink-muted);
 }
 
+.btn-danger {
+  background: var(--expense);
+  color: #fff;
+}
+
+.btn-danger:hover {
+  opacity: 0.9;
+}
+
+.delete-account-link {
+  margin-top: 1rem;
+  font-size: 0.85rem;
+}
+
+.delete-account-link a {
+  color: var(--ink-muted);
+}
+
+.delete-account-link a:hover {
+  color: var(--expense);
+}
+
+.delete-confirm-actions {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+.btn-small {
+  padding: 0.25rem 0.55rem;
+  font-size: 0.78rem;
+}
+
 .import-actions {
   margin-top: 1rem;
 }
@@ -352,6 +385,11 @@ a.card:hover {
   font-size: 0.78rem;
   color: var(--ink-muted);
   margin-right: 0.4rem;
+}
+
+.pill--transfer {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .back-link {
@@ -423,6 +461,36 @@ a.card:hover {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.88rem;
+  /* table-layout: fixed is load-bearing, not cosmetic — with the
+     default `auto` layout, a `max-width` on a <td> is only a
+     suggestion the browser can ignore once a row's actual content
+     (e.g. a status pill right after the description text) doesn't
+     "need" to wrap to fit; the content then overflows past the
+     column's visual edge and renders on top of the next column,
+     instead of wrapping. `fixed` layout makes the <colgroup> widths
+     below authoritative, which is what actually keeps every column
+     — not just Description — from overflowing into its neighbor. */
+  table-layout: fixed;
+}
+
+.txn-col-select {
+  width: 2.25rem;
+}
+
+.txn-col-date {
+  width: 6.5rem;
+}
+
+.txn-col-account {
+  width: 9rem;
+}
+
+.txn-col-category {
+  width: 9rem;
+}
+
+.txn-col-amount {
+  width: 6rem;
 }
 
 .txn-table th {
@@ -443,12 +511,63 @@ a.card:hover {
   white-space: nowrap;
 }
 
-.txn-table td:nth-child(3) {
-  white-space: normal;
-}
-
 .txn-table tbody tr:last-child td {
   border-bottom: none;
+}
+
+/* The description column needs to wrap/expand — every other column stays
+   nowrap (dates, amounts, single-word-ish account/category values never
+   need it). This used to be a nth-child(3) rule, which quietly started
+   targeting the wrong column (Account, not Description) the moment the
+   redesign added a checkbox as the new first column — a real bug, not
+   just a styling choice: with Description stuck at nowrap, the row was
+   forced wide enough to fit even the longest bank-generated description
+   on one line, which is what was actually forcing the table's horizontal
+   scroll. Targeting the column by class instead of position avoids this
+   breaking again the next time a column gets added or reordered. */
+.txn-table td.txn-account-cell {
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
+/* .txn-table td (below) sets nowrap with a compound selector — a bare
+   .description-cell class alone is *lower* specificity than that, so it
+   would lose the cascade regardless of source order and silently stay
+   nowrap. Matching the .txn-table td prefix here is what actually wins. */
+.txn-table td.description-cell {
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
+.description-details summary {
+  display: block;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.description-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.description-details summary::marker {
+  content: "";
+}
+
+.description-details summary::before {
+  content: "▸ ";
+  color: var(--ink-muted);
+}
+
+.description-details[open] summary::before {
+  content: "▾ ";
+}
+
+.description-full {
+  margin-top: 0.3rem;
+  color: var(--ink-muted);
+  white-space: normal;
 }
 
 .category-select {
@@ -459,12 +578,130 @@ a.card:hover {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 0.3rem 0.5rem;
+  max-width: 100%;
+}
+
+.transfer-note {
+  display: block;
+  color: var(--ink-muted);
+  font-size: 0.75rem;
+  margin: 0.2rem 0;
+}
+
+.pill--tag {
+  border-color: var(--ink-muted);
+}
+
+.pill--resolved {
+  border-color: var(--income);
+  color: var(--income);
+}
+
+/* ---- Transactions: toolbar (filter + bulk actions), selection, pagination ---- */
+
+/* One persistent bar — always fully rendered, never popped in/out (see
+   _content.html's comment). Filter sits on the left, bulk actions on
+   the right; both read as one connected control strip, not two
+   separately-styled pieces, which is the point — the bulk actions
+   aren't a separate floating overlay, they're just more of the filter
+   bar that happens to be disabled until something's selected. */
+.txn-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  position: sticky;
+  top: 0.75rem;
+  z-index: 5;
+  margin-bottom: 1rem;
+  padding: 0.65rem 0.9rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+.txn-filter {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--ink-muted);
+}
+
+.txn-filter__select {
+  font: inherit;
+  font-size: 0.88rem;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.4rem 0.6rem;
+}
+
+.txn-count {
+  color: var(--ink-muted);
+  font-size: 0.8rem;
+}
+
+.txn-toolbar__actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-left: auto;
+  padding-left: 0.75rem;
+  border-left: 1px solid var(--line);
+}
+
+.txn-toolbar__count {
+  font-size: 0.8rem;
+  color: var(--ink-muted);
+}
+
+.bulk-action-btn:disabled,
+#bulk-deselect-all:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.bulk-action-btn--delete:not(:disabled) {
+  color: var(--expense);
+  border-color: var(--expense);
+}
+
+.txn-select-col {
+  width: 2rem;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 0.85rem 0.6rem 0.3rem;
+}
+
+.pagination__label {
+  color: var(--ink-muted);
+  font-size: 0.82rem;
+}
+
+.pagination__disabled {
+  opacity: 0.4;
+  pointer-events: none;
 }
 
 /* ---- Dashboard ---- */
 
 .dashboard-summary {
   margin-bottom: 1rem;
+}
+
+.transfer-summary-note {
+  color: var(--ink-muted);
+  font-size: 0.8rem;
+  margin: -0.5rem 0 1rem;
 }
 
 .dashboard-summary h2 {

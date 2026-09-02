@@ -2,11 +2,15 @@
 
 Create/update use plain POST + a 303 redirect (not HTMX) — these are
 infrequent, form-based actions, and progressive enhancement (works
-without JS) matters more here than a snappier partial-page swap. Delete
-isn't implemented yet: whether it should be a hard delete (only allowed
-once an account has no transactions) or a soft-delete/archive flag is a
-real design decision, not something to guess at — revisit when it's
-actually needed.
+without JS) matters more here than a snappier partial-page swap.
+
+Delete is a hard delete of the account *and* everything in it — the
+policy question CLAUDE.md used to flag as deferred ("hard delete only
+once empty, or soft-delete/archive?") was resolved by explicit user
+decision: deleting an account deletes its transactions too, with a
+confirmation page stating exactly how many. Same plain-form-then-
+redirect shape as create/update (an infrequent, whole-record action,
+same as merge's confirm step), not HTMX.
 """
 from decimal import Decimal
 
@@ -17,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Account, Transaction
+from app.services import transfers
 from app.services.account_merge import execute_merge, find_duplicate_candidates
 from app.services.balances import resolve_balance
 from app.templating import templates
@@ -205,3 +210,37 @@ def update_account(
     account.starting_balance = payload.starting_balance
     db.commit()
     return RedirectResponse(url=f"/accounts/{account_id}", status_code=303)
+
+
+@router.get("/{account_id}/delete")
+def delete_account_confirm(request: Request, account_id: int, db: Session = Depends(get_db)):
+    account = db.get(Account, account_id)
+    if account is None:
+        raise HTTPException(status_code=404, detail=f"account {account_id} not found")
+
+    transaction_count = db.query(Transaction).filter(Transaction.account_id == account_id).count()
+    context = {"account": account, "transaction_count": transaction_count, "active_nav": "accounts"}
+    return templates.TemplateResponse(request, "accounts/delete_confirm.html", context)
+
+
+@router.post("/{account_id}/delete")
+def delete_account(account_id: int, db: Session = Depends(get_db)):
+    account = db.get(Account, account_id)
+    if account is None:
+        raise HTTPException(status_code=404, detail=f"account {account_id} not found")
+
+    # Deleting the account's transactions one at a time (not a bulk
+    # DELETE ... WHERE) so each gets the same integrity handling as any
+    # other transaction delete: clear_pair_on_delete keeps a transfer
+    # partner on a *different* account from being left pointing at a row
+    # that no longer exists, and clearing tags avoids an orphaned
+    # transaction_tags row — same pattern as routers/transactions.py's
+    # bulk delete.
+    for txn in db.query(Transaction).filter(Transaction.account_id == account_id).all():
+        transfers.clear_pair_on_delete(db, txn)
+        txn.tags = []
+        db.delete(txn)
+
+    db.delete(account)
+    db.commit()
+    return RedirectResponse(url="/accounts/", status_code=303)

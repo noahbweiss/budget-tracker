@@ -111,6 +111,10 @@
       </div>
     </div>
 
+    {% if transfer_count %}
+    <p class="transfer-summary-note">Excludes {{ transfer_count }} transfer{{ "s" if transfer_count != 1 else "" }} this period — see <a href="/transactions/">Transactions</a>.</p>
+    {% endif %}
+
     {% if buckets %}
     <div class="card">
       <h2>Over time</h2>

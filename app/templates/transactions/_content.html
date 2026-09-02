@@ -1,0 +1,160 @@
+{# Transactions list — one persistent toolbar (filter + bulk actions) plus
+   table + pagination. Rendered inside #transactions-content on a normal
+   page load, and returned standalone (this file only) for every HTMX
+   interaction on this page: changing the view filter, paging, or a bulk
+   action's response.
+
+   The toolbar is always fully rendered, action buttons included — it
+   never pops in/out. The buttons start `disabled` (nothing's selected
+   right after any render, since a swap always clears the row checkboxes
+   that were there before) and js/transactions.js enables/disables them
+   as row checkboxes are checked/unchecked, rather than toggling the
+   whole bar's visibility. Being part of this fragment (not a separate
+   region outside it, as an earlier version had it) is what makes the
+   toolbar automatically "just there" with no separate sync mechanism
+   needed — the hidden current_view/current_page inputs the buttons'
+   hx-include reads are right here too, always current.
+
+   Keep this fragment free of <script> tags — HTMX doesn't execute
+   scripts injected via a swap, so the selection-counting JS lives in
+   js/transactions.js, loaded once in index.html and driven by event
+   delegation so it keeps working after every swap without re-binding. #}
+
+<div class="txn-toolbar">
+  <label class="txn-filter">
+    <span class="txn-filter__label">Show</span>
+    <select
+      name="view"
+      class="txn-filter__select"
+      hx-get="/transactions/"
+      hx-trigger="change"
+      hx-target="#transactions-content"
+      hx-swap="innerHTML"
+      hx-push-url="true"
+      hx-include="this"
+    >
+      <option value="all" {% if view == "all" %}selected{% endif %}>All transactions</option>
+      <option value="owed" {% if view == "owed" %}selected{% endif %}>Owed to me</option>
+      <option value="resolved" {% if view == "resolved" %}selected{% endif %}>Resolved</option>
+    </select>
+  </label>
+  {% if total %}
+  <span class="txn-count">{{ total }} transaction{{ "s" if total != 1 else "" }}</span>
+  {% endif %}
+
+  <div class="txn-toolbar__actions">
+    <span class="txn-toolbar__count"><span id="bulk-selected-count">0</span> selected</span>
+    <button type="button" class="btn-secondary btn-small" id="bulk-deselect-all" disabled>Deselect all</button>
+    <button
+      type="button"
+      class="btn-secondary btn-small bulk-action-btn"
+      disabled
+      hx-post="/transactions/bulk/transfer"
+      hx-include="[name='transaction_id']:checked, [name='current_view'], [name='current_page']"
+      hx-target="#transactions-content"
+      hx-swap="innerHTML"
+    >Mark as transfer</button>
+    <button
+      type="button"
+      class="btn-secondary btn-small bulk-action-btn"
+      disabled
+      hx-post="/transactions/bulk/reimbursable"
+      hx-include="[name='transaction_id']:checked, [name='current_view'], [name='current_page']"
+      hx-target="#transactions-content"
+      hx-swap="innerHTML"
+    >Mark as reimbursable</button>
+    <button
+      type="button"
+      class="btn-secondary btn-small bulk-action-btn"
+      disabled
+      hx-post="/transactions/bulk/resolved"
+      hx-include="[name='transaction_id']:checked, [name='current_view'], [name='current_page']"
+      hx-target="#transactions-content"
+      hx-swap="innerHTML"
+    >Mark as resolved</button>
+    <button
+      type="button"
+      class="btn-secondary btn-small bulk-action-btn bulk-action-btn--delete"
+      disabled
+      hx-post="/transactions/bulk/delete"
+      hx-include="[name='transaction_id']:checked, [name='current_view'], [name='current_page']"
+      hx-target="#transactions-content"
+      hx-swap="innerHTML"
+      hx-confirm="Delete the selected transactions? This can't be undone."
+    >Delete</button>
+  </div>
+</div>
+
+<input type="hidden" name="current_view" value="{{ view }}">
+<input type="hidden" name="current_page" value="{{ page }}">
+
+{% if transactions %}
+<div class="card">
+  <div class="table-scroll">
+    <table class="txn-table">
+      <colgroup>
+        <col class="txn-col-select">
+        <col class="txn-col-date">
+        <col class="txn-col-account">
+        <col class="txn-col-description">
+        <col class="txn-col-category">
+        <col class="txn-col-amount">
+      </colgroup>
+      <thead>
+        <tr>
+          <th><input type="checkbox" id="select-all-rows" aria-label="Select all on this page"></th>
+          <th>Date</th>
+          <th>Account</th>
+          <th>Description</th>
+          <th>Category</th>
+          <th>Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for transaction in transactions %}
+        {% include "transactions/_row.html" %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if total_pages > 1 %}
+  <div class="pagination">
+    {% if page > 1 %}
+    <button
+      type="button"
+      class="btn-secondary btn-small"
+      hx-get="/transactions/?view={{ view }}&page={{ page - 1 }}"
+      hx-target="#transactions-content"
+      hx-swap="innerHTML"
+      hx-push-url="true"
+    >‹ Previous</button>
+    {% else %}
+    <span class="btn-secondary btn-small pagination__disabled" aria-hidden="true">‹ Previous</span>
+    {% endif %}
+    <span class="pagination__label">Page {{ page }} of {{ total_pages }}</span>
+    {% if page < total_pages %}
+    <button
+      type="button"
+      class="btn-secondary btn-small"
+      hx-get="/transactions/?view={{ view }}&page={{ page + 1 }}"
+      hx-target="#transactions-content"
+      hx-swap="innerHTML"
+      hx-push-url="true"
+    >Next ›</button>
+    {% else %}
+    <span class="btn-secondary btn-small pagination__disabled" aria-hidden="true">Next ›</span>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% elif view != "all" %}
+<div class="empty-state">
+  <h1>Nothing here</h1>
+  <p>No transactions match this filter yet.</p>
+</div>
+{% else %}
+<div class="empty-state">
+  <h1>No transactions yet</h1>
+  <p>Once you import a CSV or connect a bank, transactions will show up here.</p>
+</div>
+{% endif %}

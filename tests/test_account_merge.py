@@ -15,6 +15,7 @@ from decimal import Decimal
 
 from app.models import Account, Transaction
 from app.services.account_merge import execute_merge, find_duplicate_candidates
+from app.services.transfers import link_transfer_pair
 
 
 def _account(db_session, **kwargs):
@@ -187,3 +188,77 @@ def test_execute_merge_does_not_overwrite_targets_existing_simplefin_linkage(db_
     db_session.refresh(target)
     assert target.simplefin_account_id == "remote-B"
     assert target.reported_balance == Decimal("10.00")
+
+
+# ---- transfer-pair integrity ----
+
+
+def test_discarding_one_side_of_a_transfer_unlinks_the_surviving_partner(db_session):
+    # s1 (in source, a confirmed duplicate of t1) is paired with a
+    # transaction on a third account — deleting s1 as part of the merge
+    # must not leave that third transaction pointing at a deleted row.
+    source = _account(db_session, name="CSV Card")
+    target = _account(db_session, name="Synced Card")
+    third = _account(db_session, name="Checking")
+    s1 = _txn(db_session, source.id, date(2026, 7, 1), -20.00, description="dup")
+    t1 = _txn(db_session, target.id, date(2026, 7, 1), -20.00, description="dup")
+    other_side = _txn(db_session, third.id, date(2026, 7, 1), 20.00, description="the transfer's other side")
+    db_session.commit()
+    link_transfer_pair(db_session, s1, other_side)
+    db_session.commit()
+
+    execute_merge(
+        db_session, source_account_id=source.id, target_account_id=target.id, discard_source_transaction_ids={s1.id}
+    )
+
+    db_session.refresh(other_side)
+    assert other_side.is_transfer is False
+    assert other_side.transfer_pair_id is None
+
+
+def test_merging_the_two_accounts_a_transfer_ran_between_collapses_the_pair(db_session):
+    # source and target themselves had a transfer between them (e.g. the
+    # user paid off "Synced Card" from "CSV Card" before realizing they
+    # were the same real account) — once merged, both sides land on the
+    # same account, so it isn't a transfer to anywhere anymore.
+    source = _account(db_session, name="CSV Card")
+    target = _account(db_session, name="Synced Card")
+    payment = _txn(db_session, source.id, date(2026, 7, 1), -20.00, description="payment")
+    payoff = _txn(db_session, target.id, date(2026, 7, 1), 20.00, description="payoff")
+    db_session.commit()
+    link_transfer_pair(db_session, payment, payoff)
+    db_session.commit()
+
+    execute_merge(db_session, source_account_id=source.id, target_account_id=target.id, discard_source_transaction_ids=set())
+
+    db_session.refresh(payment)
+    db_session.refresh(payoff)
+    assert payment.account_id == target.id
+    assert payment.is_transfer is False
+    assert payment.transfer_pair_id is None
+    assert payoff.is_transfer is False
+    assert payoff.transfer_pair_id is None
+
+
+def test_merge_leaves_an_unrelated_transfer_pair_untouched(db_session):
+    # A transfer pair where *neither* side is involved in this merge at
+    # all must survive exactly as it was.
+    source = _account(db_session, name="CSV Card")
+    target = _account(db_session, name="Synced Card")
+    checking = _account(db_session, name="Checking")
+    credit = _account(db_session, name="Credit Card")
+    _txn(db_session, source.id, date(2026, 7, 1), -5.00, description="unrelated")
+    payment = _txn(db_session, checking.id, date(2026, 7, 1), -20.00, description="payment")
+    payoff = _txn(db_session, credit.id, date(2026, 7, 1), 20.00, description="payoff")
+    db_session.commit()
+    link_transfer_pair(db_session, payment, payoff)
+    db_session.commit()
+
+    execute_merge(db_session, source_account_id=source.id, target_account_id=target.id, discard_source_transaction_ids=set())
+
+    db_session.refresh(payment)
+    db_session.refresh(payoff)
+    assert payment.is_transfer is True
+    assert payment.transfer_pair_id == payoff.id
+    assert payoff.is_transfer is True
+    assert payoff.transfer_pair_id == payment.id

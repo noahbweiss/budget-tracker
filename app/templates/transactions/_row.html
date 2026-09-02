@@ -1,7 +1,36 @@
 <tr id="transaction-row-{{ transaction.id }}">
+  <td class="txn-select-col">
+    <input type="checkbox" name="transaction_id" value="{{ transaction.id }}" class="row-select" aria-label="Select transaction" />
+  </td>
   <td class="figure">{{ transaction.date }}</td>
-  <td>{{ transaction.account.name }}</td>
-  <td>{{ transaction.description }}</td>
+  <td class="txn-account-cell">{{ transaction.account.name }}</td>
+  <td class="description-cell">
+    {% if transaction.description|length > 60 %}
+    <details class="description-details">
+      {# leeway=0: Jinja's truncate() otherwise leaves a string alone if
+         it's only a few chars over the limit ("don't bother for just
+         a little"), which produced full-length, untruncated summaries
+         for real descriptions ~65 chars long — a hard cap needs a hard
+         leeway of 0, not the filter's own judgment call. #}
+      <summary>{{ transaction.description | truncate(60, true, "…", 0) }}</summary>
+      <div class="description-full">{{ transaction.description }}</div>
+    </details>
+    {% else %}
+    {{ transaction.description }}
+    {% endif %}
+    {% if transaction.is_transfer %}
+    <span class="pill pill--transfer">Transfer</span>
+    {% if transaction.transfer_pair %}
+    <span class="transfer-note">↔ {{ transaction.transfer_pair.account.name }} · {{ transaction.transfer_pair.date }}</span>
+    {% endif %}
+    {% endif %}
+    {% for t in transaction.tags %}
+    <span class="pill pill--tag">{{ t.name }}</span>
+    {% endfor %}
+    {% if transaction.reimbursed %}
+    <span class="pill pill--resolved">Resolved</span>
+    {% endif %}
+  </td>
   <td>
     <select
       class="category-select"

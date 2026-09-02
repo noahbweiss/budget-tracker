@@ -143,3 +143,104 @@ def test_update_account_404(client):
         data={"name": "X", "institution": "", "account_type": "checking"},
     )
     assert response.status_code == 404
+
+
+# ---- delete ----
+
+
+def test_delete_confirm_page_shows_transaction_count(client, db_session):
+    from datetime import date
+    from app.models import Transaction
+
+    account = Account(name="Checking", account_type="checking")
+    db_session.add(account)
+    db_session.flush()
+    db_session.add_all(
+        [
+            Transaction(account_id=account.id, date=date(2026, 7, 1), amount=-10, description="a"),
+            Transaction(account_id=account.id, date=date(2026, 7, 2), amount=-20, description="b"),
+        ]
+    )
+    db_session.commit()
+
+    response = client.get(f"/accounts/{account.id}/delete")
+    assert response.status_code == 200
+    assert "2" in response.text
+    assert "Checking" in response.text
+
+
+def test_delete_confirm_page_404(client):
+    response = client.get("/accounts/999/delete")
+    assert response.status_code == 404
+
+
+def test_delete_account_removes_account_and_transactions(client, db_session):
+    from datetime import date
+    from app.models import Transaction
+
+    account = Account(name="Checking", account_type="checking")
+    db_session.add(account)
+    db_session.flush()
+    txn = Transaction(account_id=account.id, date=date(2026, 7, 1), amount=-10, description="a")
+    db_session.add(txn)
+    db_session.commit()
+    account_id, txn_id = account.id, txn.id
+
+    response = client.post(f"/accounts/{account_id}/delete", follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers["location"] == "/accounts/"
+
+    assert db_session.get(Account, account_id) is None
+    assert db_session.get(Transaction, txn_id) is None
+
+
+def test_delete_account_404(client):
+    response = client.post("/accounts/999/delete")
+    assert response.status_code == 404
+
+
+def test_delete_account_unlinks_transfer_partner_on_another_account(client, db_session):
+    from datetime import date
+    from app.models import Transaction
+    from app.services.transfers import link_transfer_pair
+
+    checking = Account(name="Checking", account_type="checking")
+    credit = Account(name="Credit Card", account_type="credit")
+    db_session.add_all([checking, credit])
+    db_session.flush()
+    payment = Transaction(account_id=checking.id, date=date(2026, 7, 1), amount=-50, description="payment")
+    payoff = Transaction(account_id=credit.id, date=date(2026, 7, 1), amount=50, description="payoff")
+    db_session.add_all([payment, payoff])
+    db_session.commit()
+    link_transfer_pair(db_session, payment, payoff)
+    db_session.commit()
+    payoff_id = payoff.id
+
+    client.post(f"/accounts/{checking.id}/delete")
+
+    db_session.refresh(db_session.get(Transaction, payoff_id))
+    surviving = db_session.get(Transaction, payoff_id)
+    assert surviving.is_transfer is False
+    assert surviving.transfer_pair_id is None
+
+
+def test_delete_account_removes_tag_associations(client, db_session):
+    from datetime import date
+    from app.models import Transaction, TransactionTag
+
+    account = Account(name="Checking", account_type="checking")
+    db_session.add(account)
+    db_session.flush()
+    txn = Transaction(account_id=account.id, date=date(2026, 7, 1), amount=-10, description="a")
+    db_session.add(txn)
+    db_session.commit()
+    from app.models import Tag
+
+    tag = db_session.query(Tag).filter(Tag.slug == "reimbursable").one()
+    txn.tags.append(tag)
+    db_session.commit()
+    txn_id = txn.id
+
+    client.post(f"/accounts/{account.id}/delete")
+
+    assert db_session.query(TransactionTag).filter(TransactionTag.transaction_id == txn_id).first() is None

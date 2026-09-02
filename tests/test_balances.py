@@ -10,8 +10,8 @@ from app.models import Account, Transaction
 from app.services.balances import resolve_balance
 
 
-def _txn(account_id, d, amount, balance=None):
-    return Transaction(account_id=account_id, date=d, amount=amount, description="x", balance=balance)
+def _txn(account_id, d, amount, balance=None, **kwargs):
+    return Transaction(account_id=account_id, date=d, amount=amount, description="x", balance=balance, **kwargs)
 
 
 def test_account_level_reported_balance_outranks_everything(db_session):
@@ -123,3 +123,19 @@ def test_ties_on_date_broken_by_most_recently_inserted(db_session):
 
     result = resolve_balance(db_session, account)
     assert result.amount == Decimal("130.00")
+
+
+def test_transfer_marked_transaction_still_counts_toward_balance(db_session):
+    # A transfer is excluded from aggregation.py's income/spending totals
+    # (it's not real income or spending), but it genuinely did move money
+    # into or out of this account, so it must still count here — the
+    # account's actual balance changed regardless of how the transaction
+    # gets categorized for budgeting purposes.
+    account = Account(name="Checking", account_type="checking", starting_balance=Decimal("1000.00"))
+    db_session.add(account)
+    db_session.flush()
+    db_session.add(_txn(account.id, date(2026, 7, 1), -500, is_transfer=True))
+    db_session.commit()
+
+    result = resolve_balance(db_session, account)
+    assert result.amount == Decimal("500.00")  # 1000 starting - 500, transfer included
